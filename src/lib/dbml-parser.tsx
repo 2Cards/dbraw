@@ -13,49 +13,45 @@ export const parseDBML = (dbml: string) => {
     const tables = schema.tables || [];
     const refs = schema.refs || [];
 
-    const nodes = tables.map((table: any, index: number) => ({
-      id: table.name,
-      type: 'default',
-      data: { 
-        label: (
-          <div className="p-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 text-slate-200 shadow-xl">
-            <div className="bg-slate-800 px-3 py-2 font-bold text-sm border-b border-slate-700 text-blue-400">
-              {table.name}
-            </div>
-            <div className="p-2 space-y-1">
-              {table.fields.map((field: any) => (
-                <div key={field.name} className="text-[10px] flex justify-between gap-4 font-mono">
-                  <span className={field.pk ? "text-yellow-500" : ""}>
-                    {field.name}{field.pk ? " 🔑" : ""}
-                  </span>
-                  <span className="text-slate-500 uppercase">{field.type.type_name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )
-      },
-      position: { x: index * 250, y: (index % 3) * 150 },
-      style: { background: 'transparent', border: 'none', width: 200 },
-    }));
+    const nodes = tables.map((table: any, index: number) => {
+      return {
+        id: table.name,
+        type: 'dbTable',
+        data: { 
+          name: table.name,
+          fields: table.fields.map((f: any) => ({
+            name: f.name,
+            type: f.type.type_name,
+            pk: f.pk,
+          }))
+        },
+        // Simple grid layout logic
+        position: { x: (index % 4) * 300, y: Math.floor(index / 4) * 350 },
+      };
+    });
 
     const edges = refs.map((ref: any, index: number) => {
       const endpoint = ref.endpoints[0];
       const otherEndpoint = ref.endpoints[1];
+      
+      // Map to specific field handles
+      // Note: we use both targetHandle and sourceHandle to point to specific field IDs
       return {
         id: `e${index}`,
         source: otherEndpoint.tableName,
+        sourceHandle: otherEndpoint.fieldNames[0],
         target: endpoint.tableName,
-        label: ref.name,
-        animated: true,
-        style: { stroke: '#3b82f6', strokeWidth: 2 },
-        labelStyle: { fill: '#60a5fa', fontWeight: 700, fontSize: 10 },
+        targetHandle: endpoint.fieldNames[0],
+        label: ref.name || '',
+        animated: false,
+        style: { stroke: '#6366f1', strokeWidth: 2, opacity: 0.6 },
+        labelStyle: { fill: '#818cf8', fontWeight: 600, fontSize: 10 },
       };
     });
 
     return { nodes, edges };
   } catch (error) {
-    console.error('DBML Parse Error:', error);
+    // console.error('DBML Parse Error:', error);
     return { nodes: [], edges: [] };
   }
 };
