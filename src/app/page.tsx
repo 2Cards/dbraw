@@ -10,7 +10,7 @@ import Editor from 'react-simple-code-editor';
 import { highlight, languages } from 'prismjs/components/prism-core';
 import 'prismjs/components/prism-clike';
 import 'prismjs/components/prism-sql';
-import 'prismjs/themes/prism-tomorrow.css'; // Dark theme base
+// No theme import, using manual colors in globals.css
 
 import { 
   Loader2, Save, Download, Database, Trash2, 
@@ -245,7 +245,7 @@ export default function Home() {
                   <Code size={12} />
                   <span>DBML Blueprint</span>
                 </div>
-                <div className="flex-grow overflow-auto bg-slate-900 border-2 border-slate-900 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)]">
+                <div className="flex-grow overflow-auto bg-white border-2 border-slate-900 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)]">
                   <Editor
                     value={dbmlInput}
                     onValueChange={code => setDbmlInput(code)}
@@ -256,6 +256,7 @@ export default function Home() {
                       fontSize: 13,
                       minHeight: '100%',
                       outline: 'none',
+                      color: '#1e293b'
                     }}
                     className="dbml-editor"
                   />

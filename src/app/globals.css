@@ -37,19 +37,19 @@ body {
 }
 
 .token.keyword {
-  color: #818cf8;
+  color: #4f46e5;
   font-weight: bold;
 }
 
 .token.string {
-  color: #34d399;
+  color: #059669;
 }
 
 .token.comment {
-  color: #64748b;
+  color: #94a3b8;
   font-style: italic;
 }
 
 .token.class-name {
-  color: #fbbf24;
+  color: #d97706;
 }
