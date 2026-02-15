@@ -7,7 +7,9 @@ import ReactFlow, {
   Node, 
   Edge,
   ConnectionMode,
-  BackgroundVariant
+  BackgroundVariant,
+  OnNodesChange,
+  OnEdgesChange
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { TableNode } from './TableNode';
@@ -19,22 +21,27 @@ const nodeTypes = {
 interface VisualCanvasProps {
   nodes: Node[];
   edges: Edge[];
+  onNodesChange: OnNodesChange;
+  onEdgesChange: OnEdgesChange;
 }
 
-export const VisualCanvas = ({ nodes, edges }: VisualCanvasProps) => {
+export const VisualCanvas = ({ nodes, edges, onNodesChange, onEdgesChange }: VisualCanvasProps) => {
   return (
     <div className="w-full h-full bg-[#fdfdfd]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
         fitView
-        minZoom={0.1}
+        minZoom={0.05}
         maxZoom={2}
         defaultEdgeOptions={{
-          style: { stroke: '#1e293b', strokeWidth: 2 },
-          animated: false,
+          type: 'smoothstep', // Cleaner look for ER diagrams
+          style: { stroke: '#1e293b', strokeWidth: 2.5 },
+          pathOptions: { borderRadius: 20 },
         }}
       >
         <Background color="#e2e8f0" variant={BackgroundVariant.Lines} gap={25} size={1} />

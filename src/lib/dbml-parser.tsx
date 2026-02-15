@@ -25,31 +25,30 @@ export const parseDBML = (dbml: string) => {
             pk: f.pk,
           }))
         },
-        // Simple grid layout logic
-        position: { x: (index % 4) * 300, y: Math.floor(index / 4) * 350 },
+        // Grid-like layout
+        position: { x: (index % 3) * 350, y: Math.floor(index / 3) * 400 },
       };
     });
 
     const edges = refs.map((ref: any, index: number) => {
-      const endpoint = ref.endpoints[0];
-      const otherEndpoint = ref.endpoints[1];
+      // ref.endpoints usually has 2 elements: [source, target]
+      const targetSide = ref.endpoints[0];
+      const sourceSide = ref.endpoints[1];
       
       return {
-        id: `e${index}`,
-        source: otherEndpoint.tableName,
-        sourceHandle: otherEndpoint.fieldNames[0],
-        target: endpoint.tableName,
-        targetHandle: endpoint.fieldNames[0],
-        label: ref.name || '',
+        id: `ref-${index}`,
+        source: sourceSide.tableName,
+        sourceHandle: sourceSide.fieldNames[0], // Direct link to field ID
+        target: targetSide.tableName,
+        targetHandle: targetSide.fieldNames[0], // Direct link to field ID
+        type: 'smoothstep',
         animated: false,
-        style: { stroke: '#1e293b', strokeWidth: 2 },
-        labelStyle: { fill: '#475569', fontWeight: 600, fontSize: 10, fontFamily: 'var(--font-handwritten)' },
+        style: { stroke: '#1e293b', strokeWidth: 3 },
       };
     });
 
     return { nodes, edges };
   } catch (error) {
-    // console.error('DBML Parse Error:', error);
     return { nodes: [], edges: [] };
   }
 };

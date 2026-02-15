@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { VisualCanvas } from '@/components/editor/VisualCanvas';
 import { storage, Schema } from '@/lib/storage';
 import { parseDBML } from '@/lib/dbml-parser';
+import { useNodesState, useEdgesState } from 'reactflow';
 import { 
   Loader2, Plus, Save, Download, Database, Trash2, 
   Code, Eye, Sparkles, AlertCircle, PanelLeftClose, PanelLeftOpen, PencilLine
@@ -18,6 +19,10 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Load schemas on mount
   useEffect(() => {
     const saved = storage.getSchemas();
     setSchemas(saved);
@@ -26,6 +31,13 @@ export default function Home() {
       setDbmlInput(saved[0].dbml);
     }
   }, []);
+
+  // Sync visual canvas when DBML changes
+  useEffect(() => {
+    const { nodes: newNodes, edges: newEdges } = parseDBML(dbmlInput);
+    setNodes(newNodes);
+    setEdges(newEdges);
+  }, [dbmlInput, setNodes, setEdges]);
 
   const handleGenerate = async () => {
     if (!userInput) return;
@@ -101,8 +113,6 @@ export default function Home() {
     a.click();
   };
 
-  const { nodes, edges } = parseDBML(dbmlInput || '');
-
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#fdfdfd] text-slate-900 font-handwritten antialiased selection:bg-indigo-100">
       {/* 1. Projects Sidebar (Left) */}
@@ -110,13 +120,13 @@ export default function Home() {
         <div className="p-5 border-b-2 border-slate-900 flex justify-between items-center bg-white">
           <div className="flex items-center gap-2">
             <PencilLine size={20} className="text-slate-900" />
-            <span className="font-bold text-lg tracking-tight">SchemaForge</span>
+            <span className="font-bold text-lg tracking-tight text-slate-900">SchemaForge</span>
           </div>
         </div>
 
         <div className="flex-grow overflow-y-auto p-3 space-y-4">
           <div className="px-2 pt-2">
-            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Saved Sketches</h2>
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Saved Sketches</h2>
             <div className="space-y-2">
               {schemas.map((s) => (
                 <div 
@@ -147,11 +157,11 @@ export default function Home() {
       {/* 2. Main Workspace (Split View) */}
       <div className="flex-grow flex flex-col min-w-0">
         {/* Top Navbar */}
-        <nav className="h-14 border-b-2 border-slate-900 bg-white flex items-center justify-between px-4 z-20 shrink-0">
+        <nav className="h-14 border-b-2 border-slate-900 bg-white flex items-center justify-between px-4 z-20 shrink-0 shadow-sm">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-900"
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-900 border border-slate-200"
             >
               {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </button>
@@ -178,9 +188,9 @@ export default function Home() {
         </nav>
 
         {/* Editor & Canvas Split */}
-        <div className="flex-grow flex overflow-hidden">
+        <div className="flex-grow flex overflow-hidden bg-white">
           {/* Editor Pane */}
-          <div className="w-1/3 min-w-[400px] border-r-2 border-slate-900 flex flex-col bg-[#fcfcfc]">
+          <div className="w-1/3 min-w-[400px] border-r-2 border-slate-900 flex flex-col bg-[#fcfcfc] z-10">
             <div className="flex-grow flex flex-col p-4 space-y-4">
               {/* AI Prompt */}
               <div className="relative">
@@ -225,7 +235,12 @@ export default function Home() {
 
           {/* Canvas Pane */}
           <div className="flex-grow relative overflow-hidden bg-[#fdfdfd]">
-            <VisualCanvas nodes={nodes} edges={edges} />
+            <VisualCanvas 
+              nodes={nodes} 
+              edges={edges} 
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+            />
             {!dbmlInput && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="flex flex-col items-center gap-4 text-slate-300">
