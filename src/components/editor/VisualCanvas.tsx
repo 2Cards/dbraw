@@ -39,9 +39,8 @@ export const VisualCanvas = ({ nodes, edges, onNodesChange, onEdgesChange }: Vis
         minZoom={0.05}
         maxZoom={2}
         defaultEdgeOptions={{
-          type: 'smoothstep', // Cleaner look for ER diagrams
+          type: 'smoothstep',
           style: { stroke: '#1e293b', strokeWidth: 2.5 },
-          pathOptions: { borderRadius: 20 },
         }}
       >
         <Background color="#cbd5e1" variant={BackgroundVariant.Dots} gap={20} size={1.5} />
