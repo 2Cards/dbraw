@@ -44,7 +44,7 @@ export const VisualCanvas = ({ nodes, edges, onNodesChange, onEdgesChange }: Vis
           pathOptions: { borderRadius: 20 },
         }}
       >
-        <Background color="#e2e8f0" variant={BackgroundVariant.Lines} gap={25} size={1} />
+        <Background color="#cbd5e1" variant={BackgroundVariant.Dots} gap={20} size={1.5} />
         <Controls className="!bg-white !border-2 !border-slate-900 !rounded-lg !shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" />
       </ReactFlow>
     </div>
