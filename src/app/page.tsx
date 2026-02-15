@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { VisualCanvas } from '@/components/editor/VisualCanvas';
 import { storage, Schema } from '@/lib/storage';
 import { parseDBML } from '@/lib/dbml-parser';
-import { useNodesState, useEdgesState } from 'reactflow';
+import { useNodesState, useEdgesState, Node, Edge } from 'reactflow';
 import Editor from 'react-simple-code-editor';
 // @ts-ignore
 import { highlight, languages } from 'prismjs/components/prism-core';
@@ -39,11 +39,12 @@ export default function Home() {
   
   const [leftPanelWidth, setLeftPanelWidth] = useState(450);
   const isResizing = useRef(false);
+  const isInitialLoad = useRef(true);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  // 1. Initial Load
+  // 1. Initial Load from LocalStorage
   useEffect(() => {
     const saved = storage.getSchemas();
     setSchemas(saved);
@@ -53,69 +54,72 @@ export default function Home() {
       setDbmlInput(initial.dbml);
       setSchemaName(initial.name);
       
-      const { nodes: initialNodes, edges: initialEdges } = parseDBML(initial.dbml);
-      if (initial.layout) {
-        setNodes(initialNodes.map(n => ({
-          ...n,
-          position: initial.layout![n.id] || n.position
-        })));
-      } else {
-        setNodes(initialNodes);
-      }
-      setEdges(initialEdges);
+      const { nodes: parsedNodes, edges: parsedEdges } = parseDBML(initial.dbml);
+      
+      // Apply saved layout
+      const positionedNodes = parsedNodes.map(n => ({
+        ...n,
+        position: initial.layout?.[n.id] || n.position
+      }));
+
+      setNodes(positionedNodes);
+      setEdges(parsedEdges);
     }
+    // Mark initial load as done after a tiny delay to let states settle
+    setTimeout(() => { isInitialLoad.current = false; }, 100);
   }, [setNodes, setEdges]);
 
-  // 2. Sync Visuals when DBML changes (AI or Editor)
+  // 2. Sync Visuals when DBML changes (Manual typing or AI)
+  // We only want this to run when DBML actually changes via user/AI, 
+  // not when we just loaded it from storage.
   useEffect(() => {
+    if (isInitialLoad.current) return;
+
     const { nodes: nextNodes, edges: nextEdges } = parseDBML(dbmlInput, nodes);
     
-    // Only replace nodes if the schema structure changed (e.g., table added/removed)
-    // to prevent losing positions during minor edits or dragging
+    // Check if structure changed (tables added/removed)
     const currentIds = nodes.map(n => n.id).sort().join(',');
     const nextIds = nextNodes.map(n => n.id).sort().join(',');
     
-    if (currentIds !== nextIds || nodes.length === 0) {
+    if (currentIds !== nextIds) {
       setNodes(nextNodes);
     }
     setEdges(nextEdges);
   }, [dbmlInput]);
 
-  // 3. 🔄 Autosave Logic (Debounced)
+  // 3. 🔄 Unified Autosave Logic
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  useEffect(() => {
+  const saveToStorage = useCallback(() => {
     if (!currentSchema) return;
-    
+
     const layout: Record<string, { x: number; y: number }> = {};
     nodes.forEach(n => { layout[n.id] = n.position; });
 
-    const hasChanges = dbmlInput !== currentSchema.dbml || 
-                       schemaName !== currentSchema.name ||
-                       JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
+    const updatedSchema: Schema = { 
+      ...currentSchema, 
+      name: schemaName, 
+      dbml: dbmlInput, 
+      layout,
+      updatedAt: Date.now() 
+    };
 
-    if (!hasChanges) return;
-
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    setIsSaving(true);
-    timerRef.current = setTimeout(() => {
-      const updatedSchema: Schema = { 
-        ...currentSchema, 
-        name: schemaName, 
-        dbml: dbmlInput, 
-        layout,
-        updatedAt: Date.now() 
-      };
-      storage.saveSchema(updatedSchema);
-      setSchemas(storage.getSchemas());
-      setCurrentSchema(updatedSchema);
-      setIsSaving(false);
-    }, 1500);
-
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    storage.saveSchema(updatedSchema);
+    setSchemas(storage.getSchemas());
+    setCurrentSchema(updatedSchema);
+    setIsSaving(false);
   }, [dbmlInput, schemaName, nodes, currentSchema]);
 
-  // 4. 📏 Resize logic
+  useEffect(() => {
+    if (isInitialLoad.current || !currentSchema) return;
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setIsSaving(true);
+    timerRef.current = setTimeout(saveToStorage, 1000);
+
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [dbmlInput, schemaName, nodes, saveToStorage]);
+
+  // 4. 📏 UI Resizing
   const startResizing = useCallback(() => {
     isResizing.current = true;
     document.body.style.cursor = 'col-resize';
@@ -220,7 +224,7 @@ export default function Home() {
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#fdfdfd] text-slate-900 font-handwritten antialiased selection:bg-indigo-100">
-      {/* 1. Sidebar */}
+      {/* Sidebar */}
       <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} border-r-2 border-slate-900 bg-[#f8f9fa] transition-all duration-300 flex flex-col overflow-hidden shrink-0`}>
         <div className="p-5 border-b-2 border-slate-900 flex justify-between items-center bg-white">
           <div className="flex items-center gap-2">
@@ -233,7 +237,7 @@ export default function Home() {
             <FilePlus size={14} /> New Sketch
           </button>
           <div className="px-2 pt-2">
-            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Saved Sketches</h2>
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1 text-slate-900">Saved Sketches</h2>
             <div className="space-y-2">
               {schemas.map((s) => (
                 <div key={s.id} 
@@ -249,7 +253,6 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* 2. Main Workspace */}
       <div className="flex-grow flex flex-col min-w-0">
         <nav className="h-14 border-b-2 border-slate-900 bg-white flex items-center justify-between px-4 z-20 shrink-0 shadow-sm">
           <div className="flex items-center gap-4 flex-grow max-w-xl">
@@ -257,7 +260,7 @@ export default function Home() {
               {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </button>
             <div className="h-4 w-px bg-slate-200" />
-            <input value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="Untitled Sketch" className="flex-grow text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none focus:bg-indigo-50/50 transition-colors" />
+            <input value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="Untitled Sketch" className="flex-grow text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none focus:bg-indigo-50/50 transition-colors text-slate-900" />
             {isSaving && <span className="text-[10px] text-slate-400 animate-pulse shrink-0">Saving...</span>}
           </div>
           <div className="flex items-center gap-3 ml-4">
@@ -271,7 +274,7 @@ export default function Home() {
           <div style={{ width: `${leftPanelWidth}px` }} className="border-r-2 border-slate-900 flex flex-col bg-[#fcfcfc] z-10 shrink-0 relative">
             <div className="flex-grow flex flex-col p-4 space-y-4">
               <div className="relative">
-                <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Ask AI to design or update..." className="w-full h-24 p-4 text-sm bg-white border-2 border-slate-900 rounded-xl focus:ring-0 focus:border-indigo-600 outline-none transition-all placeholder:text-slate-300 resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)]" />
+                <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Ask AI to design or update..." className="w-full h-24 p-4 text-sm bg-white border-2 border-slate-900 rounded-xl focus:ring-0 focus:border-indigo-600 outline-none transition-all placeholder:text-slate-300 resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] text-slate-900" />
                 <button onClick={handleGenerate} disabled={isLoading || !userInput} className="absolute bottom-3 right-3 p-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-all disabled:opacity-30 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                   {isLoading ? <Loader2 className="animate-spin text-white" size={16} /> : <Sparkles className="text-white" size={16} />}
                 </button>
