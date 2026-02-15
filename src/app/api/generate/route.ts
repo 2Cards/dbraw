@@ -37,8 +37,11 @@ export async function POST(req: Request) {
       }, { status: response.status });
     }
 
+    const data = await response.json();
+    const dbml = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
     if (!dbml) {
-      throw new Error('Failed to generate schema');
+      throw new Error('Failed to generate schema: Empty response from AI');
     }
 
     return NextResponse.json({ dbml });
