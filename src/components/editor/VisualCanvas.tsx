@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -23,7 +23,7 @@ interface VisualCanvasProps {
 
 export const VisualCanvas = ({ nodes, edges }: VisualCanvasProps) => {
   return (
-    <div className="w-full h-full bg-slate-950">
+    <div className="w-full h-full bg-[#fdfdfd]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -31,10 +31,14 @@ export const VisualCanvas = ({ nodes, edges }: VisualCanvasProps) => {
         connectionMode={ConnectionMode.Loose}
         fitView
         minZoom={0.1}
-        maxZoom={1.5}
+        maxZoom={2}
+        defaultEdgeOptions={{
+          style: { stroke: '#1e293b', strokeWidth: 2 },
+          animated: false,
+        }}
       >
-        <Background color="#1e293b" variant={BackgroundVariant.Dots} gap={20} />
-        <Controls className="!bg-slate-800 !border-slate-700 !fill-slate-300 shadow-xl" />
+        <Background color="#e2e8f0" variant={BackgroundVariant.Lines} gap={25} size={1} />
+        <Controls className="!bg-white !border-2 !border-slate-900 !rounded-lg !shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" />
       </ReactFlow>
     </div>
   );

@@ -34,8 +34,6 @@ export const parseDBML = (dbml: string) => {
       const endpoint = ref.endpoints[0];
       const otherEndpoint = ref.endpoints[1];
       
-      // Map to specific field handles
-      // Note: we use both targetHandle and sourceHandle to point to specific field IDs
       return {
         id: `e${index}`,
         source: otherEndpoint.tableName,
@@ -44,8 +42,8 @@ export const parseDBML = (dbml: string) => {
         targetHandle: endpoint.fieldNames[0],
         label: ref.name || '',
         animated: false,
-        style: { stroke: '#6366f1', strokeWidth: 2, opacity: 0.6 },
-        labelStyle: { fill: '#818cf8', fontWeight: 600, fontSize: 10 },
+        style: { stroke: '#1e293b', strokeWidth: 2 },
+        labelStyle: { fill: '#475569', fontWeight: 600, fontSize: 10, fontFamily: 'var(--font-handwritten)' },
       };
     });
 

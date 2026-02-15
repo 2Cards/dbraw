@@ -6,7 +6,7 @@ import { storage, Schema } from '@/lib/storage';
 import { parseDBML } from '@/lib/dbml-parser';
 import { 
   Loader2, Plus, Save, Download, Database, Trash2, 
-  Code, Eye, Sparkles, AlertCircle, Share2, PanelLeftClose, PanelLeftOpen
+  Code, Eye, Sparkles, AlertCircle, PanelLeftClose, PanelLeftOpen, PencilLine
 } from 'lucide-react';
 
 export default function Home() {
@@ -43,14 +43,14 @@ export default function Home() {
         setDbmlInput(cleanDbml);
         const newSchema: Schema = {
           id: Date.now().toString(),
-          name: 'AI Draft ' + new Date().toLocaleTimeString(),
+          name: 'Sketch ' + new Date().toLocaleTimeString(),
           dbml: cleanDbml,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
         setCurrentSchema(newSchema);
       } else {
-        setError(data.error || 'AI limit reached. Try again later.');
+        setError(data.error || 'AI limit reached. Try again.');
       }
     } catch (err) {
       setError('Connection refused.');
@@ -61,7 +61,7 @@ export default function Home() {
 
   const handleSave = () => {
     if (!dbmlInput) return;
-    const name = window.prompt('Project Name', currentSchema?.name || 'My Schema') || 'Untitled';
+    const name = window.prompt('Sketch Name', currentSchema?.name || 'New Design') || 'Untitled';
     const schemaToSave: Schema = {
       id: currentSchema?.id || Date.now().toString(),
       name,
@@ -75,7 +75,7 @@ export default function Home() {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('Delete this project?')) {
+    if (confirm('Delete this design?')) {
       storage.deleteSchema(id);
       const updated = storage.getSchemas();
       setSchemas(updated);
@@ -104,39 +104,37 @@ export default function Home() {
   const { nodes, edges } = parseDBML(dbmlInput || '');
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-200 antialiased selection:bg-indigo-500/30">
+    <main className="flex h-screen w-screen overflow-hidden bg-[#fdfdfd] text-slate-900 font-handwritten antialiased selection:bg-indigo-100">
       {/* 1. Projects Sidebar (Left) */}
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} border-r border-slate-800 bg-slate-900 transition-all duration-300 flex flex-col overflow-hidden shrink-0`}>
-        <div className="p-5 border-b border-slate-800 flex justify-between items-center">
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} border-r-2 border-slate-900 bg-[#f8f9fa] transition-all duration-300 flex flex-col overflow-hidden shrink-0`}>
+        <div className="p-5 border-b-2 border-slate-900 flex justify-between items-center bg-white">
           <div className="flex items-center gap-2">
-            <div className="bg-indigo-600 p-1.5 rounded-lg shadow-lg shadow-indigo-900/40">
-              <Database size={18} className="text-white" />
-            </div>
-            <span className="font-bold tracking-tight text-white">SchemaForge</span>
+            <PencilLine size={20} className="text-slate-900" />
+            <span className="font-bold text-lg tracking-tight">SchemaForge</span>
           </div>
         </div>
 
         <div className="flex-grow overflow-y-auto p-3 space-y-4">
           <div className="px-2 pt-2">
-            <h2 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Saved Projects</h2>
-            <div className="space-y-1">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Saved Sketches</h2>
+            <div className="space-y-2">
               {schemas.map((s) => (
                 <div 
                   key={s.id} 
-                  className={`group p-2.5 rounded-xl border transition-all flex justify-between items-center ${
+                  className={`group p-3 rounded-lg border-2 transition-all flex justify-between items-center ${
                     currentSchema?.id === s.id 
-                    ? 'bg-indigo-600/10 border-indigo-500/50 text-indigo-400' 
-                    : 'bg-transparent border-transparent hover:bg-slate-800/50 hover:border-slate-700 text-slate-400'
+                    ? 'bg-indigo-50 border-slate-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                    : 'bg-white border-slate-200 hover:border-slate-400'
                   }`}
                   onClick={() => {
                     setCurrentSchema(s);
                     setDbmlInput(s.dbml);
                   }}
                 >
-                  <span className="text-xs font-semibold truncate">{s.name}</span>
+                  <span className="text-xs font-bold truncate pr-2">{s.name}</span>
                   <Trash2 
                     size={14} 
-                    className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all cursor-pointer" 
+                    className="opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all cursor-pointer" 
                     onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
                   />
                 </div>
@@ -149,30 +147,30 @@ export default function Home() {
       {/* 2. Main Workspace (Split View) */}
       <div className="flex-grow flex flex-col min-w-0">
         {/* Top Navbar */}
-        <nav className="h-14 border-b border-slate-800 bg-slate-900/80 backdrop-blur-xl flex items-center justify-between px-4 z-20 shrink-0">
+        <nav className="h-14 border-b-2 border-slate-900 bg-white flex items-center justify-between px-4 z-20 shrink-0">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400"
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-900"
             >
               {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </button>
-            <div className="h-4 w-px bg-slate-700" />
-            <div className="text-sm font-bold text-white px-2 py-1 bg-slate-800 rounded-md">
-              {currentSchema?.name || 'New Project'}
+            <div className="h-4 w-px bg-slate-200" />
+            <div className="text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+              {currentSchema?.name || 'Untitled Sketch'}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 font-sans">
             <button
               onClick={handleSave}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-all"
+              className="flex items-center gap-2 px-4 py-1.5 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
             >
               <Save size={14} /> Save
             </button>
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-900/20 transition-all"
+              className="flex items-center gap-2 px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
             >
               <Download size={14} /> Export DBML
             </button>
@@ -181,21 +179,21 @@ export default function Home() {
 
         {/* Editor & Canvas Split */}
         <div className="flex-grow flex overflow-hidden">
-          {/* Editor Pane (Left part of workspace) */}
-          <div className="w-1/3 min-w-[400px] border-r border-slate-800 flex flex-col bg-slate-950">
+          {/* Editor Pane */}
+          <div className="w-1/3 min-w-[400px] border-r-2 border-slate-900 flex flex-col bg-[#fcfcfc]">
             <div className="flex-grow flex flex-col p-4 space-y-4">
               {/* AI Prompt */}
               <div className="relative">
                 <textarea
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
-                  placeholder="Ask AI to design or update..."
-                  className="w-full h-24 p-4 text-xs bg-slate-900 border border-slate-800 rounded-2xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-600 resize-none shadow-inner"
+                  placeholder="Describe your ideas here..."
+                  className="w-full h-24 p-4 text-sm bg-white border-2 border-slate-900 rounded-xl focus:ring-0 focus:border-indigo-600 outline-none transition-all placeholder:text-slate-300 resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)]"
                 />
                 <button
                   onClick={handleGenerate}
                   disabled={isLoading || !userInput}
-                  className="absolute bottom-3 right-3 p-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-30 disabled:bg-slate-800"
+                  className="absolute bottom-3 right-3 p-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-all disabled:opacity-30 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                 >
                   {isLoading ? <Loader2 className="animate-spin text-white" size={16} /> : <Sparkles className="text-white" size={16} />}
                 </button>
@@ -203,21 +201,21 @@ export default function Home() {
 
               {/* Code Editor */}
               <div className="flex-grow flex flex-col min-h-0">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">
                   <Code size={12} />
-                  <span>DBML Schema Editor</span>
+                  <span>DBML Blueprint</span>
                 </div>
                 <textarea
                   value={dbmlInput}
                   onChange={(e) => setDbmlInput(e.target.value)}
-                  placeholder="Paste or write DBML here..."
-                  className="flex-grow w-full p-5 bg-slate-900/50 border border-slate-800 rounded-2xl text-indigo-400 font-mono text-[13px] leading-relaxed outline-none resize-none scrollbar-thin scrollbar-thumb-slate-700"
+                  placeholder="Table users { ... }"
+                  className="flex-grow w-full p-5 bg-white border-2 border-slate-900 rounded-2xl text-slate-900 font-mono text-[13px] leading-relaxed outline-none resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)]"
                   spellCheck={false}
                 />
               </div>
               
               {error && (
-                <div className="p-3 bg-red-900/10 border border-red-900/30 rounded-xl flex items-center gap-2 text-red-400 text-[11px] animate-pulse">
+                <div className="p-3 bg-red-50 border-2 border-red-900 rounded-xl flex items-center gap-2 text-red-900 text-[11px]">
                   <AlertCircle size={14} />
                   <span>{error}</span>
                 </div>
@@ -225,16 +223,14 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Canvas Pane (Right part of workspace) */}
-          <div className="flex-grow relative bg-slate-950">
+          {/* Canvas Pane */}
+          <div className="flex-grow relative overflow-hidden bg-[#fdfdfd]">
             <VisualCanvas nodes={nodes} edges={edges} />
             {!dbmlInput && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="flex flex-col items-center gap-4 text-slate-700">
-                  <div className="p-8 rounded-full bg-slate-900/30 border border-slate-800/30">
-                    <Database size={60} className="opacity-10" />
-                  </div>
-                  <p className="text-sm font-medium tracking-wide">Workspace Empty</p>
+                <div className="flex flex-col items-center gap-4 text-slate-300">
+                  <Database size={60} className="opacity-10 text-slate-900" />
+                  <p className="text-sm font-bold tracking-widest opacity-20 uppercase">Empty Canvas</p>
                 </div>
               </div>
             )}
