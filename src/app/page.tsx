@@ -56,7 +56,6 @@ export default function Home() {
       
       const { nodes: parsedNodes, edges: parsedEdges } = parseDBML(initial.dbml);
       
-      // Apply saved layout
       const positionedNodes = parsedNodes.map(n => ({
         ...n,
         position: initial.layout?.[n.id] || n.position
@@ -65,19 +64,15 @@ export default function Home() {
       setNodes(positionedNodes);
       setEdges(parsedEdges);
     }
-    // Mark initial load as done after a tiny delay to let states settle
     setTimeout(() => { isInitialLoad.current = false; }, 100);
   }, [setNodes, setEdges]);
 
-  // 2. Sync Visuals when DBML changes (Manual typing or AI)
-  // We only want this to run when DBML actually changes via user/AI, 
-  // not when we just loaded it from storage.
+  // 2. Sync Visuals when DBML changes
   useEffect(() => {
     if (isInitialLoad.current) return;
 
     const { nodes: nextNodes, edges: nextEdges } = parseDBML(dbmlInput, nodes);
     
-    // Check if structure changed (tables added/removed)
     const currentIds = nodes.map(n => n.id).sort().join(',');
     const nextIds = nextNodes.map(n => n.id).sort().join(',');
     
@@ -224,7 +219,6 @@ export default function Home() {
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#fdfdfd] text-slate-900 font-handwritten antialiased selection:bg-indigo-100">
-      {/* Sidebar */}
       <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} border-r-2 border-slate-900 bg-[#f8f9fa] transition-all duration-300 flex flex-col overflow-hidden shrink-0`}>
         <div className="p-5 border-b-2 border-slate-900 flex justify-between items-center bg-white">
           <div className="flex items-center gap-2">
@@ -255,12 +249,12 @@ export default function Home() {
 
       <div className="flex-grow flex flex-col min-w-0">
         <nav className="h-14 border-b-2 border-slate-900 bg-white flex items-center justify-between px-4 z-20 shrink-0 shadow-sm">
-          <div className="flex items-center gap-4 flex-grow max-w-xl">
+          <div className="flex items-center gap-4 flex-grow max-w-xl text-slate-900">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-900 border border-slate-200">
               {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </button>
             <div className="h-4 w-px bg-slate-200" />
-            <input value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="Untitled Sketch" className="flex-grow text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none focus:bg-indigo-50/50 transition-colors text-slate-900" />
+            <input value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="Untitled Sketch" className="flex-grow text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none focus:bg-indigo-50/50 transition-colors text-slate-900 placeholder:text-slate-300" />
             {isSaving && <span className="text-[10px] text-slate-400 animate-pulse shrink-0">Saving...</span>}
           </div>
           <div className="flex items-center gap-3 ml-4">
@@ -283,22 +277,9 @@ export default function Home() {
                 <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">
                   <Code size={12} /><span>DBML Blueprint</span>
                 </div>
-                <div className="flex-grow overflow-hidden bg-white border-2 border-slate-900 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] text-slate-900 flex flex-col">
-                  <div className="flex-grow overflow-auto custom-scrollbar">
-                    <Editor
-                      value={dbmlInput}
-                      onValueChange={code => setDbmlInput(code)}
-                      highlight={code => dbmlHighlight(code)}
-                      padding={20}
-                      style={{
-                        fontFamily: '"Geist Mono", monospace',
-                        fontSize: 13,
-                        outline: 'none',
-                        color: '#1e293b',
-                        minHeight: '100%',
-                      }}
-                      className="dbml-editor text-slate-900"
-                    />
+                <div className="flex-grow bg-white border-2 border-slate-900 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] text-slate-900 flex flex-col relative overflow-hidden">
+                  <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
+                    <Editor value={dbmlInput} onValueChange={code => setDbmlInput(code)} highlight={code => dbmlHighlight(code)} padding={20} style={{ fontFamily: '"Geist Mono", monospace', fontSize: 13, outline: 'none', color: '#1e293b', minHeight: '100%' }} className="dbml-editor text-slate-900 pb-20" />
                   </div>
                 </div>
               </div>
