@@ -9,7 +9,8 @@ import ReactFlow, {
   ConnectionMode,
   BackgroundVariant,
   OnNodesChange,
-  OnEdgesChange
+  OnEdgesChange,
+  OnConnect
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { TableNode } from './TableNode';
@@ -23,9 +24,10 @@ interface VisualCanvasProps {
   edges: Edge[];
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
+  onConnect?: OnConnect;
 }
 
-export const VisualCanvas = ({ nodes, edges, onNodesChange, onEdgesChange }: VisualCanvasProps) => {
+export const VisualCanvas = ({ nodes, edges, onNodesChange, onEdgesChange, onConnect }: VisualCanvasProps) => {
   return (
     <div className="w-full h-full bg-[#fdfdfd]">
       <ReactFlow
@@ -33,6 +35,7 @@ export const VisualCanvas = ({ nodes, edges, onNodesChange, onEdgesChange }: Vis
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
         fitView

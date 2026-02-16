@@ -49,6 +49,18 @@ export default function Home() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
+  const onConnect = useCallback((params: any) => {
+    const { source, sourceHandle, target, targetHandle } = params;
+    if (!source || !sourceHandle || !target || !targetHandle) return;
+
+    // Handle ID format: `${field.name}-source` or `${field.name}-target`
+    const sourceField = sourceHandle.split('-')[0];
+    const targetField = targetHandle.split('-')[0];
+
+    const newRef = `\n\nRef: ${source}.${sourceField} > ${target}.${targetField}`;
+    setDbmlInput(prev => prev.trim() + newRef);
+  }, [setDbmlInput]);
+
   // 1. Initial Load & Window Size
   useEffect(() => {
     let saved = storage.getSchemas();
@@ -321,7 +333,7 @@ export default function Home() {
 
           {/* Canvas Pane */}
           <div className={`flex-grow relative overflow-hidden bg-[#fdfdfd] ${activeTab !== 'canvas' ? 'hidden md:block' : 'block'}`}>
-            <VisualCanvas nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} />
+            <VisualCanvas nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} />
             {!dbmlInput && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-900">
                 <div className="flex flex-col items-center gap-4 text-slate-300">
