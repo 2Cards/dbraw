@@ -1,5 +1,5 @@
 import { Parser } from '@dbml/core';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge, MarkerType } from 'reactflow';
 
 export const parseDBML = (dbml: string, existingNodes: Node[] = []) => {
   if (!dbml || typeof dbml !== 'string') return { nodes: [], edges: [] };
@@ -37,12 +37,18 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []) => {
     });
 
     const edges: Edge[] = refs.map((ref: any, index: number) => {
-      // For simplicity, we connect the first field of the ref
       const targetEndpoint = ref.endpoints[0];
       const sourceEndpoint = ref.endpoints[1];
       
       const sourceFieldName = sourceEndpoint.fieldNames[0];
       const targetFieldName = targetEndpoint.fieldNames[0];
+
+      // Cardinality detection
+      // 1:1 (-), 1:N (>), N:1 (<), N:M (<>)
+      // ref.endpoints[i].relation is '1' or '*'
+      const relSource = sourceEndpoint.relation === '1' ? '1' : 'N';
+      const relTarget = targetEndpoint.relation === '1' ? '1' : 'N';
+      const label = `${relSource}:${relTarget}`;
 
       return {
         id: `ref-${index}`,
@@ -51,7 +57,18 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []) => {
         target: targetEndpoint.tableName,
         targetHandle: `${targetFieldName}-target`,
         type: 'smoothstep',
-        style: { stroke: '#1e293b', strokeWidth: 3 },
+        label: label,
+        labelStyle: { fill: '#1e293b', fontWeight: 800, fontSize: 10, fontFamily: 'inherit' },
+        labelBgPadding: [4, 2],
+        labelBgBorderRadius: 4,
+        labelBgStyle: { fill: '#f8f9fa', fillOpacity: 1, stroke: '#1e293b', strokeWidth: 1 },
+        style: { stroke: '#1e293b', strokeWidth: 2.5 },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 15,
+          height: 15,
+          color: '#1e293b',
+        },
       };
     });
 
