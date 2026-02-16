@@ -21,6 +21,11 @@ const architectsDaughter = Architects_Daughter({
 export const metadata: Metadata = {
   title: "DBRaw - AI Database Designer",
   description: "Generate and visualize database schemas with AI",
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({
