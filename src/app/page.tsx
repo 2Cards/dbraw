@@ -61,6 +61,29 @@ export default function Home() {
     setDbmlInput(prev => prev.trim() + newRef);
   }, [setDbmlInput]);
 
+  const onTableColorChange = useCallback((tableName: string, color: string) => {
+    setDbmlInput(prev => {
+      // Look for table definition: Table tableName [settings] {
+      // We want to add or replace headercolor in settings
+      const tableRegex = new RegExp(`(Table\\s+${tableName}\\s*\\[)(.*?)(\\])`, 'i');
+      const tableWithoutSettingsRegex = new RegExp(`(Table\\s+${tableName})(\\s*\\{)`, 'i');
+
+      if (tableRegex.test(prev)) {
+        // Replace existing or add to existing settings
+        return prev.replace(tableRegex, (match, p1, p2, p3) => {
+          if (p2.includes('headercolor:')) {
+            return `${p1}${p2.replace(/headercolor:\s*#[a-f0-9]{3,6}/i, `headercolor: ${color}`)}${p3}`;
+          } else {
+            return `${p1}${p2.trim()}${p2.trim() ? ', ' : ''}headercolor: ${color}${p3}`;
+          }
+        });
+      } else {
+        // Add settings block if not exists
+        return prev.replace(tableWithoutSettingsRegex, `$1 [headercolor: ${color}]$2`);
+      }
+    });
+  }, [setDbmlInput]);
+
   // 1. Initial Load & Window Size
   useEffect(() => {
     let saved = storage.getSchemas();
@@ -333,7 +356,14 @@ export default function Home() {
 
           {/* Canvas Pane */}
           <div className={`flex-grow relative overflow-hidden bg-[#fdfdfd] ${activeTab !== 'canvas' ? 'hidden md:block' : 'block'}`}>
-            <VisualCanvas nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} />
+            <VisualCanvas 
+              nodes={nodes} 
+              edges={edges} 
+              onNodesChange={onNodesChange} 
+              onEdgesChange={onEdgesChange} 
+              onConnect={onConnect} 
+              onTableColorChange={onTableColorChange}
+            />
             {!dbmlInput && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-900">
                 <div className="flex flex-col items-center gap-4 text-slate-300">

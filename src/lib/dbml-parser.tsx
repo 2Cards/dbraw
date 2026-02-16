@@ -22,6 +22,7 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []) => {
         type: 'dbTable',
         data: { 
           name: table.name,
+          color: table.headerColor,
           fields: table.fields.map((f: any) => ({
             name: f.name,
             type: f.type.type_name,

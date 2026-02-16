@@ -25,9 +25,21 @@ interface VisualCanvasProps {
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect?: OnConnect;
+  onTableColorChange?: (tableName: string, color: string) => void;
 }
 
-export const VisualCanvas = ({ nodes, edges, onNodesChange, onEdgesChange, onConnect }: VisualCanvasProps) => {
+export const VisualCanvas = ({ 
+  nodes, 
+  edges, 
+  onNodesChange, 
+  onEdgesChange, 
+  onConnect,
+  onTableColorChange 
+}: VisualCanvasProps) => {
+  const nodeTypes = React.useMemo(() => ({
+    dbTable: (props: any) => <TableNode {...props} onColorChange={onTableColorChange} />,
+  }), [onTableColorChange]);
+
   return (
     <div className="w-full h-full bg-[#fdfdfd]">
       <ReactFlow
