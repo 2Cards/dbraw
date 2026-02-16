@@ -50,8 +50,6 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []) => {
       const relTarget = targetEndpoint.relation === '1' ? '1' : 'N';
       const label = `${relSource}:${relTarget}`;
 
-      const label = `${relSource}:${relTarget}`;
-
       return {
         id: `ref-${index}`,
         source: sourceEndpoint.tableName,
