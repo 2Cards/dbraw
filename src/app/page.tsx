@@ -15,7 +15,7 @@ import 'prismjs/components/prism-sql';
 
 import { 
   Loader2, Database, Trash2, 
-  Code, Sparkles, AlertCircle, PencilLine, FilePlus, Download,
+  Code, Sparkles, AlertCircle, PanelLeftClose, PanelLeftOpen, PencilLine, FilePlus, Download,
   Menu, X, Eye, Image as ImageIcon, Wand2, Terminal
 } from 'lucide-react';
 
@@ -95,17 +95,13 @@ function HomeContent() {
     });
   }, [setDbmlInput]);
 
-  // Restricted onEdgeUpdate: Only allow switching sides, no field change, no DBML update
   const onEdgeUpdate = useCallback((oldEdge: Edge, newConnection: any) => {
     const { source, sourceHandle, target, targetHandle } = newConnection;
-    
-    // Extract field names
     const oldSourceField = oldEdge.sourceHandle?.split('-')[0];
     const oldTargetField = oldEdge.targetHandle?.split('-')[0];
     const newSourceField = sourceHandle?.split('-')[0];
     const newTargetField = targetHandle?.split('-')[0];
 
-    // Only allow if it's the SAME nodes and SAME fields
     const isSameEdge = source === oldEdge.source && 
                        target === oldEdge.target && 
                        newSourceField === oldSourceField && 
@@ -142,6 +138,9 @@ function HomeContent() {
       const { nodes: dNodes, edges: dEdges } = parseDBML(demoSchema.dbml);
       setTimeout(() => handleAutoLayout(dNodes, dEdges), 500);
     }
+    ['demo-v1', 'demo-v2', 'demo-v3'].forEach(id => {
+      if (saved.some(s => s.id === id)) { storage.deleteSchema(id); saved = saved.filter(s => s.id !== id); }
+    });
     setSchemas(saved);
     if (!currentSchema && saved.length > 0) { setCurrentSchema(saved[0]); }
     const checkMobile = () => {
@@ -159,14 +158,11 @@ function HomeContent() {
     if (!currentSchema) return;
     setDbmlInput(currentSchema.dbml);
     setSchemaName(currentSchema.name);
-    
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
-    
     const layoutNodes = parsedNodes.map(n => ({ ...n, position: currentSchema.layout?.[n.id] || n.position }));
     setNodes(layoutNodes);
     
-    // Restore edge handle sides from metadata
     const savedHandles = (currentSchema.layout?.edgeHandles || {}) as Record<string, any>;
     const edgesWithHandles = parsedEdges.map(e => {
       if (savedHandles[e.id]) {
@@ -175,7 +171,6 @@ function HomeContent() {
       return e;
     });
     setEdges(edgesWithHandles);
-    
     setTimeout(() => fitView({ padding: 0.2 }), 50);
   }, [currentSchema?.id]);
 
@@ -187,16 +182,11 @@ function HomeContent() {
       if (JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data }))) !== JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })))) {
         setNodes(nextNodes);
       }
-      
-      // Preserve current handle choices during live sync
       const nextEdgesWithHandles = nextEdges.map(e => {
         const existing = edges.find(old => old.id === e.id);
-        if (existing) {
-          return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle };
-        }
+        if (existing) { return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle }; }
         return e;
       });
-
       if (JSON.stringify(edges.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle }))) !== JSON.stringify(nextEdgesWithHandles.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle })))) {
         setEdges(nextEdgesWithHandles);
       }
@@ -208,13 +198,8 @@ function HomeContent() {
     if (!currentSchema) return;
     const layout: any = {};
     nodes.forEach(n => { layout[n.id] = n.position; });
-    
-    // Persist edge sides in layout metadata
     layout.edgeHandles = {};
-    edges.forEach(e => {
-      layout.edgeHandles[e.id] = { sh: e.sourceHandle, th: e.targetHandle };
-    });
-
+    edges.forEach(e => { layout.edgeHandles[e.id] = { sh: e.sourceHandle, th: e.targetHandle }; });
     const hasChanges = dbmlInput !== currentSchema.dbml || schemaName !== currentSchema.name || JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
     if (!hasChanges) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -228,6 +213,21 @@ function HomeContent() {
     }, 1500);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [dbmlInput, schemaName, nodes, edges]);
+
+  const startResizing = useCallback(() => { isResizing.current = true; document.body.style.cursor = 'col-resize'; }, []);
+  const stopResizing = useCallback(() => { isResizing.current = false; document.body.style.cursor = 'default'; }, []);
+  const resize = useCallback((e: MouseEvent) => {
+    if (!isResizing.current) return;
+    const sidebarWidth = isSidebarOpen ? 256 : 0;
+    const newWidth = e.clientX - sidebarWidth;
+    if (newWidth > 300 && newWidth < 800) setLeftPanelWidth(newWidth);
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', resize);
+    window.addEventListener('mouseup', stopResizing);
+    return () => { window.removeEventListener('mousemove', resize); window.removeEventListener('mouseup', stopResizing); };
+  }, [resize, stopResizing]);
 
   const handleNewSchema = () => {
     const name = window.prompt('New Sketch Name', 'Untitled Sketch') || 'New Sketch';
