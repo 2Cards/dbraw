@@ -92,21 +92,15 @@ function HomeContent() {
 
   // Initial Data Loading
   useEffect(() => {
-    const saved = storage.getSchemas();
-    setSchemas(saved);
+    let saved = storage.getSchemas();
     
     if (saved.length === 0) {
-      const firstSchema: Schema = { 
-        id: 'initial', 
-        name: 'Untitled Sketch', 
-        dbml: '', 
-        createdAt: Date.now(), 
-        updatedAt: Date.now() 
-      };
-      storage.saveSchema(firstSchema);
-      setSchemas([firstSchema]);
-      setCurrentSchema(firstSchema);
-    } else if (!currentSchema) {
+      const demoSchema = storage.initDefault();
+      saved = [demoSchema];
+    }
+    
+    setSchemas(saved);
+    if (!currentSchema) {
       setCurrentSchema(saved[0]);
     }
 
@@ -143,7 +137,7 @@ function HomeContent() {
     
     // Auto fit view on load
     setTimeout(() => fitView({ padding: 0.2 }), 50);
-  }, [currentSchema?.id]); // Only trigger when the schema ID changes
+  }, [currentSchema?.id]);
 
   // Handle live updates when typing in the editor
   useEffect(() => {
