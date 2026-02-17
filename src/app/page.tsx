@@ -167,7 +167,7 @@ function HomeContent() {
     setNodes(layoutNodes);
     
     // Restore edge handle sides from metadata
-    const savedHandles = currentSchema.layout?.edgeHandles || {};
+    const savedHandles = (currentSchema.layout?.edgeHandles || {}) as Record<string, any>;
     const edgesWithHandles = parsedEdges.map(e => {
       if (savedHandles[e.id]) {
         return { ...e, sourceHandle: savedHandles[e.id].sh, targetHandle: savedHandles[e.id].th };
