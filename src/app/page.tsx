@@ -95,11 +95,14 @@ function HomeContent() {
   useEffect(() => {
     let saved = storage.getSchemas();
     
-    // Check if demo-v3 exists, if not - add it
-    const hasDemo = saved.some(s => s.id === 'demo-v3');
+    // Check if initial-demo exists, if not - add it
+    const hasDemo = saved.some(s => s.id === 'initial-demo');
     if (!hasDemo) {
       const demoSchema = storage.initDefault();
-      saved = [demoSchema, ...saved];
+      saved = [demoSchema]; // Start with ONLY the demo schema
+      
+      // Clean up old versions from localStorage if they exist
+      ['demo-v1', 'demo-v2', 'demo-v3'].forEach(id => storage.deleteSchema(id));
     }
     
     setSchemas(saved);

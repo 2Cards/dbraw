@@ -33,6 +33,14 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []): ParseResult
             name: f.name,
             type: f.type.type_name,
             pk: f.pk,
+            unique: f.unique,
+            notNull: f.not_null,
+            dbdefault: f.dbdefault,
+          })),
+          indexes: table.indexes?.map((idx: any) => ({
+            columns: idx.columns.map((c: any) => c.value),
+            unique: idx.unique,
+            name: idx.name
           }))
         },
         position: existingNode?.position || { 
@@ -78,7 +86,6 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []): ParseResult
     return { nodes, edges, error: null };
   } catch (error: any) {
     console.error('Parsing error:', error);
-    // Extract a cleaner error message if possible
     const message = error.message || 'Syntax error in DBML code';
     return { nodes: [], edges: [], error: message };
   }

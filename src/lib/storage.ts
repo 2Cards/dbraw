@@ -107,7 +107,7 @@ export const storage = {
 
   initDefault: (): Schema => {
     const schema: Schema = {
-      id: 'demo-v3',
+      id: 'initial-demo',
       name: 'Modern Web App (Demo)',
       dbml: DEFAULT_DBML,
       layout: DEFAULT_LAYOUT,
