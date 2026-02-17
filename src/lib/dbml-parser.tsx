@@ -61,16 +61,19 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []): ParseResult
       const relTarget = targetEndpoint.relation === '1' ? '1' : 'N';
       const label = `${relSource}:${relTarget}`;
 
-      // We look for side hints in comments or metadata if we wanted to be fancy, 
-      // but for now we'll store the side in the edge ID or handle ID during sync.
-      // To ensure persistence of "sides" (left/right), we'll try to extract them from existing edges if available.
+      // Try to find the edge in current state to see if user changed the side
+      const existingEdge = existingNodes.length > 0 ? null : null; // existingNodes are nodes, not edges
+      
+      // Look for a comment hint in the DBML line? 
+      // For now, DBRaw will store metadata in the edge ID if we want persistence across re-parses.
+      // But simpler: use the existing edges state if available to preserve sides.
       
       return {
-        id: `ref-${index}`,
+        id: `ref-${sourceEndpoint.tableName}.${sourceFieldName}-${targetEndpoint.tableName}.${targetFieldName}`,
         source: sourceEndpoint.tableName,
-        sourceHandle: `${sourceFieldName}-right`, // Default to right
+        sourceHandle: `${sourceFieldName}-right`, // UI will update this via onEdgeUpdate
         target: targetEndpoint.tableName,
-        targetHandle: `${targetFieldName}-left`,  // Default to left
+        targetHandle: `${targetFieldName}-left`,  // UI will update this via onEdgeUpdate
         type: 'smoothstep',
         label: label,
         labelStyle: { fill: '#1e293b', fontWeight: 800, fontSize: 10, fontFamily: 'inherit' },

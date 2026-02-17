@@ -79,7 +79,6 @@ function HomeContent() {
     setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 100);
   }, [nodes, edges, setNodes, fitView]);
 
-  // Enhanced onConnect: update code instead of just canvas
   const onConnect = useCallback((params: any) => {
     const { source, sourceHandle, target, targetHandle } = params;
     if (!source || !sourceHandle || !target || !targetHandle) return;
@@ -87,25 +86,37 @@ function HomeContent() {
     const sourceField = sourceHandle.split('-')[0];
     const targetField = targetHandle.split('-')[0];
 
-    const newRef = `\n\nRef: ${source}.${sourceField} > ${target}.${targetField}`;
-    setDbmlInput(prev => prev.trim() + newRef);
+    const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedTarget = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const existingRefRegex = new RegExp(`Ref:\\s*${escapedSource}\\.${sourceField}\\s*(>|<|-)\\s*${escapedTarget}\\.${targetField}`, 'i');
+
+    setDbmlInput(prev => {
+      if (existingRefRegex.test(prev)) return prev;
+      return prev.trim() + `\n\nRef: ${source}.${sourceField} > ${target}.${targetField}`;
+    });
   }, [setDbmlInput]);
 
-  // Handle re-connecting existing edges
   const onEdgeUpdate = useCallback((oldEdge: Edge, newConnection: any) => {
+    const { source, sourceHandle, target, targetHandle } = newConnection;
+    
     setDbmlInput(prev => {
       const oldSourceField = oldEdge.sourceHandle?.split('-')[0];
       const oldTargetField = oldEdge.targetHandle?.split('-')[0];
       
-      // Match various Ref syntaxes
-      const oldRefRegex = new RegExp(`Ref:\\s*${oldEdge.source}\\.${oldSourceField}\\s*(>|<|-)\\s*${oldEdge.target}\\.${oldTargetField}`, 'i');
+      const escapedSource = oldEdge.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedTarget = oldEdge.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
-      const newSourceField = newConnection.sourceHandle?.split('-')[0];
-      const newTargetField = newConnection.targetHandle?.split('-')[0];
-      const newRef = `Ref: ${newConnection.source}.${newSourceField} > ${newConnection.target}.${newTargetField}`;
+      const oldRefRegex = new RegExp(`Ref:\\s*${escapedSource}\\.${oldSourceField}\\s*(>|<|-)\\s*${escapedTarget}\\.${oldTargetField}(\\s|\\n|$)`, 'i');
+      
+      const newSourceField = sourceHandle?.split('-')[0];
+      const newTargetField = targetHandle?.split('-')[0];
+      const newRef = `Ref: ${source}.${newSourceField} > ${target}.${newTargetField}`;
       
       if (oldRefRegex.test(prev)) {
-        return prev.replace(oldRefRegex, newRef);
+        return prev.replace(oldRefRegex, (match) => {
+          const suffix = match.endsWith('\n') ? '\n' : (match.endsWith(' ') ? ' ' : '');
+          return newRef + suffix;
+        });
       }
       return prev + `\n${newRef}`;
     });
@@ -162,7 +173,17 @@ function HomeContent() {
     setValidationError(parseErr);
     const layoutNodes = parsedNodes.map(n => ({ ...n, position: currentSchema.layout?.[n.id] || n.position }));
     setNodes(layoutNodes);
-    setEdges(parsedEdges);
+    
+    // Attempt to restore handle sides from edges state if available
+    const edgesWithHandles = parsedEdges.map(e => {
+      const savedEdge = edges.find(se => se.id === e.id);
+      if (savedEdge) {
+        return { ...e, sourceHandle: savedEdge.sourceHandle, targetHandle: savedEdge.targetHandle };
+      }
+      return e;
+    });
+    setEdges(edgesWithHandles);
+    
     setTimeout(() => fitView({ padding: 0.2 }), 50);
   }, [currentSchema?.id]);
 
@@ -173,12 +194,20 @@ function HomeContent() {
     if (!parseErr) {
       const currentNodesJson = JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data })));
       const nextNodesJson = JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })));
-      // Enhanced comparison: include handle sides
+      
+      const nextEdgesWithHandles = nextEdges.map(e => {
+        const existing = edges.find(old => old.id === e.id);
+        if (existing) {
+          return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle };
+        }
+        return e;
+      });
+
       const currentEdgesJson = JSON.stringify(edges.map(e => ({ source: e.source, target: e.target, sh: e.sourceHandle, th: e.targetHandle })));
-      const nextEdgesJson = JSON.stringify(nextEdges.map(e => ({ source: e.source, target: e.target, sh: e.sourceHandle, th: e.targetHandle })));
+      const nextEdgesJson = JSON.stringify(nextEdgesWithHandles.map(e => ({ source: e.source, target: e.target, sh: e.sourceHandle, th: e.targetHandle })));
       
       if (currentNodesJson !== nextNodesJson) setNodes(nextNodes);
-      if (currentEdgesJson !== nextEdgesJson) setEdges(nextEdges);
+      if (currentEdgesJson !== nextEdgesJson) setEdges(nextEdgesWithHandles);
     }
   }, [dbmlInput]);
 
@@ -187,9 +216,7 @@ function HomeContent() {
     if (!currentSchema) return;
     const layout: Record<string, { x: number; y: number }> = {};
     nodes.forEach(n => { layout[n.id] = n.position; });
-    const edgeLayout: Record<string, { sh: string, th: string }> = {};
-    edges.forEach(e => { edgeLayout[e.id] = { sh: e.sourceHandle || '', th: e.targetHandle || '' } });
-
+    
     const hasChanges = dbmlInput !== currentSchema.dbml || schemaName !== currentSchema.name || JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
     if (!hasChanges) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -202,7 +229,7 @@ function HomeContent() {
       setIsSaving(false);
     }, 1500);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [dbmlInput, schemaName, nodes, edges]);
+  }, [dbmlInput, schemaName, nodes]);
 
   const startResizing = useCallback(() => { isResizing.current = true; document.body.style.cursor = 'col-resize'; }, []);
   const stopResizing = useCallback(() => { isResizing.current = false; document.body.style.cursor = 'default'; }, []);
