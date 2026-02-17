@@ -152,9 +152,10 @@ function HomeContent() {
     setSchemaName(currentSchema.name);
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
-    const layoutNodes = parsedNodes.map(n => ({ ...n, position: currentSchema.layout?.[n.id] || n.position }));
+    const layout = currentSchema.layout || {};
+    const layoutNodes = parsedNodes.map(n => ({ ...n, position: layout[n.id] || n.position }));
     setNodes(layoutNodes);
-    const savedHandles = (currentSchema.layout?.edgeHandles || {}) as Record<string, any>;
+    const savedHandles = (layout.edgeHandles || {}) as Record<string, any>;
     const edgesWithHandles = parsedEdges.map(e => {
       if (savedHandles[e.id]) { return { ...e, sourceHandle: savedHandles[e.id].sh, targetHandle: savedHandles[e.id].th }; }
       return e;
@@ -202,83 +203,7 @@ function HomeContent() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [dbmlInput, schemaName, nodes, edges]);
 
-  const startResizing = useCallback(() => { isResizing.current = true; document.body.style.cursor = 'col-resize'; }, []);
-  const stopResizing = useCallback(() => { isResizing.current = false; document.body.style.cursor = 'default'; }, []);
-  const resize = useCallback((e: MouseEvent) => {
-    if (!isResizing.current) return;
-    const sidebarWidth = isSidebarOpen ? 256 : 0;
-    const newWidth = e.clientX - sidebarWidth;
-    if (newWidth > 300 && newWidth < 800) setLeftPanelWidth(newWidth);
-  }, [isSidebarOpen]);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    return () => { window.removeEventListener('mousemove', resize); window.removeEventListener('mouseup', stopResizing); };
-  }, [resize, stopResizing]);
-
-  const handleNewSchema = () => {
-    const name = window.prompt('New Sketch Name', 'Untitled Sketch') || 'New Sketch';
-    const newSchema: Schema = { id: Date.now().toString(), name, dbml: '', createdAt: Date.now(), updatedAt: Date.now() };
-    storage.saveSchema(newSchema);
-    const updated = storage.getSchemas();
-    setSchemas(updated);
-    setCurrentSchema(newSchema);
-    if (isMobile) setIsSidebarOpen(false);
-  };
-
-  const handleGenerate = async () => {
-    if (!userInput) return;
-    setIsLoading(true);
-    try {
-      const res = await fetch('/api/generate', { method: 'POST', body: JSON.stringify({ prompt: userInput, currentDbml: dbmlInput }) });
-      const data = await res.json();
-      if (res.ok && data.dbml) {
-        setDbmlInput(data.dbml.replace(/```dbml|```/g, '').trim());
-        setUserInput('');
-        if (isMobile) setActiveTab('canvas');
-      }
-    } catch (err) {} finally { setIsLoading(false); }
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this design?')) {
-      storage.deleteSchema(id);
-      const updated = storage.getSchemas();
-      setSchemas(updated);
-      if (currentSchema?.id === id) { setCurrentSchema(updated.length > 0 ? updated[0] : null); }
-    }
-  };
-
-  const handleDownload = () => {
-    if (!dbmlInput) return;
-    const blob = new Blob([dbmlInput], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${schemaName || 'schema'}.dbml`;
-    a.click();
-  };
-
-  const handleExportImage = async () => {
-    const element = document.querySelector('.react-flow') as HTMLElement;
-    if (!element) return;
-    try {
-      setIsLoading(true);
-      await fitView({ padding: 0.2 });
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const dataUrl = await toPng(element, {
-        backgroundColor: '#fdfdfd',
-        filter: (node: HTMLElement) => !['react-flow__controls', 'react-flow__attribution'].some((cls) => node.classList?.contains(cls)),
-        pixelRatio: 2,
-        cacheBust: true,
-      });
-      const a = document.createElement('a');
-      a.setAttribute('download', `${schemaName || 'schema'}.png`);
-      a.setAttribute('href', dataUrl);
-      a.click();
-    } catch (err) {} finally { setIsLoading(false); }
-  };
+  const startResizing = () => { isResizing.current = true; };
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#fdfdfd] text-slate-900 font-handwritten antialiased selection:bg-indigo-100 relative">
