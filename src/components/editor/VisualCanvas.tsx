@@ -11,7 +11,7 @@ import ReactFlow, {
   OnNodesChange,
   OnEdgesChange,
   OnConnect,
-  OnEdgeUpdate
+  OnEdgeUpdateFunc
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { TableNode } from './TableNode';
@@ -22,7 +22,7 @@ interface VisualCanvasProps {
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect?: OnConnect;
-  onEdgeUpdate?: OnEdgeUpdate;
+  onEdgeUpdate?: OnEdgeUpdateFunc;
   onTableColorChange?: (tableName: string, color: string) => void;
 }
 
