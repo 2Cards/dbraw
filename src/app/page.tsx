@@ -16,7 +16,7 @@ import 'prismjs/components/prism-sql';
 import { 
   Loader2, Save, Database, Trash2, 
   Code, Sparkles, AlertCircle, PanelLeftClose, PanelLeftOpen, PencilLine, FilePlus, Download,
-  Menu, X, Eye, Image as ImageIcon, Wand2
+  Menu, X, Eye, Image as ImageIcon, Wand2, Terminal
 } from 'lucide-react';
 
 const dbmlHighlight = (code: string) => {
@@ -46,6 +46,7 @@ function HomeContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [dbmlInput, setDbmlInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [schemaName, setSchemaName] = useState('');
@@ -126,7 +127,9 @@ function HomeContent() {
     setSchemaName(currentSchema.name);
 
     // 2. Sync Visual Canvas (Important: Load layout from schema)
-    const { nodes: parsedNodes, edges: parsedEdges } = parseDBML(currentSchema.dbml);
+    const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
+    setValidationError(parseErr);
+
     const layoutNodes = parsedNodes.map(n => ({
       ...n,
       position: currentSchema.layout?.[n.id] || n.position
@@ -143,16 +146,19 @@ function HomeContent() {
   useEffect(() => {
     if (isInitialLoad.current || !currentSchema) return;
 
-    const { nodes: nextNodes, edges: nextEdges } = parseDBML(dbmlInput, nodes);
+    const { nodes: nextNodes, edges: nextEdges, error: parseErr } = parseDBML(dbmlInput, nodes);
+    setValidationError(parseErr);
     
-    // Comparison to avoid unnecessary updates
-    const currentNodesJson = JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data })));
-    const nextNodesJson = JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })));
-    const currentEdgesJson = JSON.stringify(edges.map(e => ({ source: e.source, target: e.target })));
-    const nextEdgesJson = JSON.stringify(nextEdges.map(e => ({ source: e.source, target: e.target })));
+    if (!parseErr) {
+      // Comparison to avoid unnecessary updates
+      const currentNodesJson = JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data })));
+      const nextNodesJson = JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })));
+      const currentEdgesJson = JSON.stringify(edges.map(e => ({ source: e.source, target: e.target })));
+      const nextEdgesJson = JSON.stringify(nextEdges.map(e => ({ source: e.source, target: e.target })));
 
-    if (currentNodesJson !== nextNodesJson) setNodes(nextNodes);
-    if (currentEdgesJson !== nextEdgesJson) setEdges(nextEdges);
+      if (currentNodesJson !== nextNodesJson) setNodes(nextNodes);
+      if (currentEdgesJson !== nextEdgesJson) setEdges(nextEdges);
+    }
   }, [dbmlInput]);
 
   // Autosave Logic
@@ -364,13 +370,13 @@ function HomeContent() {
             {isSaving && <span className="text-[10px] text-slate-400 animate-pulse shrink-0 hidden sm:block">Saving...</span>}
           </div>
           <div className="flex items-center gap-2 font-sans ml-2 shrink-0">
-            <button onClick={handleAutoLayout} className="p-2 md:px-3 md:py-1.5 bg-indigo-50 border-2 border-slate-900 hover:bg-indigo-100 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
+            <button onClick={handleAutoLayout} title="Auto-layout schema" className="p-2 md:px-3 md:py-1.5 bg-indigo-50 border-2 border-slate-900 hover:bg-indigo-100 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
               <Wand2 size={16} className="md:mr-2 inline" /><span className="hidden md:inline">Magic</span>
             </button>
-            <button onClick={handleExportImage} className="p-2 md:px-3 md:py-1.5 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
+            <button onClick={handleExportImage} title="Export to PNG" className="p-2 md:px-3 md:py-1.5 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
               <ImageIcon size={16} className="md:mr-2 inline" /><span className="hidden md:inline">PNG</span>
             </button>
-            <button onClick={handleDownload} className="p-2 md:px-4 md:py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
+            <button onClick={handleDownload} title="Export DBML" className="p-2 md:px-4 md:py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
               <Download size={16} className="md:mr-2 inline" /><span className="hidden md:inline">DBML</span>
             </button>
           </div>
@@ -403,14 +409,28 @@ function HomeContent() {
             `}
           >
             <div className="flex-grow flex flex-col p-4 space-y-4 overflow-hidden">
-              <div className={`${activeTab === 'prompt' ? 'hidden md:flex' : 'flex'} flex-grow flex flex-col min-h-0 text-slate-900`}>
-                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">
-                  <Code size={12} /><span>DBML Blueprint</span>
+              <div className={`${activeTab === 'prompt' ? 'hidden md:flex' : 'flex'} flex-grow flex flex-col min-h-0 text-slate-900 relative`}>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <Code size={12} /><span>DBML Blueprint</span>
+                  </div>
+                  {validationError && (
+                    <div className="flex items-center gap-1.5 text-red-600 animate-pulse">
+                      <AlertCircle size={12} />
+                      <span className="text-[10px] font-bold uppercase tracking-tight">Syntax Error</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-grow bg-white border-2 border-slate-900 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] text-slate-900 flex flex-col relative overflow-hidden">
+                <div className={`flex-grow bg-white border-2 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] text-slate-900 flex flex-col relative overflow-hidden transition-colors duration-300 ${validationError ? 'border-red-500 ring-2 ring-red-50' : 'border-slate-900'}`}>
                   <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
                     <Editor value={dbmlInput} onValueChange={code => setDbmlInput(code)} highlight={code => dbmlHighlight(code)} padding={20} style={{ fontFamily: '"Geist Mono", monospace', fontSize: 13, outline: 'none', color: '#1e293b', minHeight: '100%' }} className="dbml-editor text-slate-900 pb-20" />
                   </div>
+                  {validationError && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white p-3 text-[11px] font-sans flex items-start gap-2 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.1)]">
+                      <Terminal size={14} className="shrink-0 mt-0.5" />
+                      <span className="leading-tight">{validationError}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

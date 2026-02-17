@@ -1,13 +1,19 @@
 import { Parser } from '@dbml/core';
 import { Node, Edge, MarkerType } from 'reactflow';
 
-export const parseDBML = (dbml: string, existingNodes: Node[] = []) => {
-  if (!dbml || typeof dbml !== 'string') return { nodes: [], edges: [] };
+export interface ParseResult {
+  nodes: Node[];
+  edges: Edge[];
+  error: string | null;
+}
+
+export const parseDBML = (dbml: string, existingNodes: Node[] = []): ParseResult => {
+  if (!dbml || typeof dbml !== 'string') return { nodes: [], edges: [], error: null };
   
   try {
     const database = Parser.parse(dbml, 'dbml');
     if (!database || !database.schemas || database.schemas.length === 0) {
-      return { nodes: [], edges: [] };
+      return { nodes: [], edges: [], error: null };
     }
 
     const schema = database.schemas[0];
@@ -69,8 +75,11 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []) => {
       };
     });
 
-    return { nodes, edges };
-  } catch (error) {
-    return { nodes: [], edges: [] };
+    return { nodes, edges, error: null };
+  } catch (error: any) {
+    console.error('Parsing error:', error);
+    // Extract a cleaner error message if possible
+    const message = error.message || 'Syntax error in DBML code';
+    return { nodes: [], edges: [], error: message };
   }
 };

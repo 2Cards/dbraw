@@ -22,7 +22,7 @@ Table users [headercolor: #3498db] {
 
 Table posts [headercolor: #e74c3c] {
   id uuid [pk]
-  user_id uuid [ref: > users.id]
+  user_id uuid
   title varchar
   content text
   status varchar
@@ -31,8 +31,8 @@ Table posts [headercolor: #e74c3c] {
 
 Table comments [headercolor: #2ecc71] {
   id uuid [pk]
-  post_id uuid [ref: > posts.id]
-  user_id uuid [ref: > users.id]
+  post_id uuid
+  user_id uuid
   content text
   created_at timestamp
 }
@@ -43,8 +43,8 @@ Table tags [headercolor: #f39c12] {
 }
 
 Table post_tags [headercolor: #95a5a6] {
-  post_id uuid [ref: > posts.id]
-  tag_id uuid [ref: > tags.id]
+  post_id uuid
+  tag_id uuid
 }
 
 Ref: users.id < posts.user_id
