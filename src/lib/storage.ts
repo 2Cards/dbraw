@@ -2,13 +2,14 @@ export interface Schema {
   id: string;
   name: string;
   dbml: string;
-  layout?: Record<string, { x: number; y: number }>;
+  layout?: Record<string, { x: number; y: number }> & { edgeHandles?: Record<string, { sh: string, th: string }> };
   createdAt: number;
   updatedAt: number;
 }
 
 const STORAGE_KEY = 'schemaforge_schemas';
 const FIRST_RUN_KEY = 'dbraw_demo_initialized';
+const LAST_SCHEMA_KEY = 'dbraw_last_schema_id';
 
 const DEFAULT_DBML = `// DBRaw Demo Schema ⚙️
 
@@ -73,9 +74,6 @@ Ref: users.id < posts.user_id
 Ref: posts.id < comments.post_id
 Ref: users.id < comments.user_id`;
 
-// Initial layout is empty to trigger Magic on first load
-const DEFAULT_LAYOUT = {};
-
 export const storage = {
   getSchemas: (): Schema[] => {
     if (typeof window === 'undefined') return [];
@@ -97,10 +95,23 @@ export const storage = {
   deleteSchema: (id: string) => {
     const schemas = storage.getSchemas().filter((s) => s.id !== id);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(schemas));
+    if (localStorage.getItem(LAST_SCHEMA_KEY) === id) {
+      localStorage.removeItem(LAST_SCHEMA_KEY);
+    }
   },
 
   getSchema: (id: string): Schema | undefined => {
     return storage.getSchemas().find((s) => s.id === id);
+  },
+
+  setLastSchemaId: (id: string) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(LAST_SCHEMA_KEY, id);
+  },
+
+  getLastSchemaId: (): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(LAST_SCHEMA_KEY);
   },
 
   isFirstRun: (): boolean => {
@@ -118,7 +129,7 @@ export const storage = {
       id: 'initial-demo',
       name: 'Demo Schema',
       dbml: DEFAULT_DBML,
-      layout: DEFAULT_LAYOUT,
+      layout: {},
       createdAt: Date.now(),
       updatedAt: Date.now()
     };

@@ -81,14 +81,11 @@ function HomeContent() {
   const onConnect = useCallback((params: any) => {
     const { source, sourceHandle, target, targetHandle } = params;
     if (!source || !sourceHandle || !target || !targetHandle) return;
-
     const sourceField = sourceHandle.split('-')[0];
     const targetField = targetHandle.split('-')[0];
-
     const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const escapedTarget = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const existingRefRegex = new RegExp(`Ref:\\s*${escapedSource}\\.${sourceField}\\s*(>|<|-)\\s*${escapedTarget}\\.${targetField}`, 'i');
-
     setDbmlInput(prev => {
       if (existingRefRegex.test(prev)) return prev;
       return prev.trim() + `\n\nRef: ${source}.${sourceField} > ${target}.${targetField}`;
@@ -101,12 +98,7 @@ function HomeContent() {
     const oldTargetField = oldEdge.targetHandle?.split('-')[0];
     const newSourceField = sourceHandle?.split('-')[0];
     const newTargetField = targetHandle?.split('-')[0];
-
-    const isSameEdge = source === oldEdge.source && 
-                       target === oldEdge.target && 
-                       newSourceField === oldSourceField && 
-                       newTargetField === oldTargetField;
-
+    const isSameEdge = source === oldEdge.source && target === oldEdge.target && newSourceField === oldSourceField && newTargetField === oldTargetField;
     if (isSameEdge) {
       setEdges((els) => updateEdge(oldEdge, newConnection, els));
     }
@@ -130,6 +122,7 @@ function HomeContent() {
     });
   }, [setDbmlInput]);
 
+  // Initial Data Loading
   useEffect(() => {
     let saved = storage.getSchemas();
     if (saved.length === 0 && storage.isFirstRun()) {
@@ -138,11 +131,17 @@ function HomeContent() {
       const { nodes: dNodes, edges: dEdges } = parseDBML(demoSchema.dbml);
       setTimeout(() => handleAutoLayout(dNodes, dEdges), 500);
     }
-    ['demo-v1', 'demo-v2', 'demo-v3'].forEach(id => {
-      if (saved.some(s => s.id === id)) { storage.deleteSchema(id); saved = saved.filter(s => s.id !== id); }
-    });
     setSchemas(saved);
-    if (!currentSchema && saved.length > 0) { setCurrentSchema(saved[0]); }
+    
+    // Last active schema logic
+    const lastId = storage.getLastSchemaId();
+    const lastSchema = saved.find(s => s.id === lastId);
+    if (lastSchema) {
+      setCurrentSchema(lastSchema);
+    } else if (saved.length > 0) {
+      setCurrentSchema(saved[0]);
+    }
+
     const checkMobile = () => {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
@@ -154,10 +153,13 @@ function HomeContent() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Handle Switching between Schemas
   useEffect(() => {
     if (!currentSchema) return;
+    storage.setLastSchemaId(currentSchema.id);
     setDbmlInput(currentSchema.dbml);
     setSchemaName(currentSchema.name);
+    
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
     const layoutNodes = parsedNodes.map(n => ({ ...n, position: currentSchema.layout?.[n.id] || n.position }));
@@ -165,15 +167,14 @@ function HomeContent() {
     
     const savedHandles = (currentSchema.layout?.edgeHandles || {}) as Record<string, any>;
     const edgesWithHandles = parsedEdges.map(e => {
-      if (savedHandles[e.id]) {
-        return { ...e, sourceHandle: savedHandles[e.id].sh, targetHandle: savedHandles[e.id].th };
-      }
+      if (savedHandles[e.id]) { return { ...e, sourceHandle: savedHandles[e.id].sh, targetHandle: savedHandles[e.id].th }; }
       return e;
     });
     setEdges(edgesWithHandles);
     setTimeout(() => fitView({ padding: 0.2 }), 50);
   }, [currentSchema?.id]);
 
+  // Handle live updates
   useEffect(() => {
     if (isInitialLoad.current || !currentSchema) return;
     const { nodes: nextNodes, edges: nextEdges, error: parseErr } = parseDBML(dbmlInput, nodes);
@@ -182,17 +183,23 @@ function HomeContent() {
       if (JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data }))) !== JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })))) {
         setNodes(nextNodes);
       }
+      
+      const currentHandleState = (currentSchema.layout?.edgeHandles || {}) as Record<string, any>;
       const nextEdgesWithHandles = nextEdges.map(e => {
-        const existing = edges.find(old => old.id === e.id);
-        if (existing) { return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle }; }
+        const existing = edges.find(old => old.id === e.id) || { sourceHandle: currentHandleState[e.id]?.sh, targetHandle: currentHandleState[e.id]?.th };
+        if (existing.sourceHandle) { return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle }; }
         return e;
       });
-      if (JSON.stringify(edges.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle }))) !== JSON.stringify(nextEdgesWithHandles.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle })))) {
+
+      const currentEdgesJson = JSON.stringify(edges.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle })));
+      const nextEdgesJson = JSON.stringify(nextEdgesWithHandles.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle })));
+      if (currentEdgesJson !== nextEdgesJson) {
         setEdges(nextEdgesWithHandles);
       }
     }
   }, [dbmlInput]);
 
+  // Autosave
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!currentSchema) return;
@@ -200,6 +207,7 @@ function HomeContent() {
     nodes.forEach(n => { layout[n.id] = n.position; });
     layout.edgeHandles = {};
     edges.forEach(e => { layout.edgeHandles[e.id] = { sh: e.sourceHandle, th: e.targetHandle }; });
+
     const hasChanges = dbmlInput !== currentSchema.dbml || schemaName !== currentSchema.name || JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
     if (!hasChanges) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -213,21 +221,6 @@ function HomeContent() {
     }, 1500);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [dbmlInput, schemaName, nodes, edges]);
-
-  const startResizing = useCallback(() => { isResizing.current = true; document.body.style.cursor = 'col-resize'; }, []);
-  const stopResizing = useCallback(() => { isResizing.current = false; document.body.style.cursor = 'default'; }, []);
-  const resize = useCallback((e: MouseEvent) => {
-    if (!isResizing.current) return;
-    const sidebarWidth = isSidebarOpen ? 256 : 0;
-    const newWidth = e.clientX - sidebarWidth;
-    if (newWidth > 300 && newWidth < 800) setLeftPanelWidth(newWidth);
-  }, [isSidebarOpen]);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    return () => { window.removeEventListener('mousemove', resize); window.removeEventListener('mouseup', stopResizing); };
-  }, [resize, stopResizing]);
 
   const handleNewSchema = () => {
     const name = window.prompt('New Sketch Name', 'Untitled Sketch') || 'New Sketch';
