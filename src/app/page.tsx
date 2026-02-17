@@ -31,6 +31,11 @@ const dbmlHighlight = (code: string) => {
 
 type MobileTab = 'prompt' | 'code' | 'canvas';
 
+interface EdgeHandleMetadata {
+  sh?: string | null;
+  th?: string | null;
+}
+
 export default function Home() {
   return (
     <ReactFlowProvider>
@@ -98,14 +103,8 @@ function HomeContent() {
     const oldTargetField = oldEdge.targetHandle?.split('-')[0];
     const newSourceField = sourceHandle?.split('-')[0];
     const newTargetField = targetHandle?.split('-')[0];
-
-    // Strictly enforce same node and same field - only handle side changes
-    const isSameLogicalEdge = source === oldEdge.source && 
-                              target === oldEdge.target && 
-                              newSourceField === oldSourceField && 
-                              newTargetField === oldTargetField;
-
-    if (isSameLogicalEdge) {
+    const isSameEdge = source === oldEdge.source && target === oldEdge.target && newSourceField === oldSourceField && newTargetField === oldTargetField;
+    if (isSameEdge) {
       setEdges((els) => updateEdge(oldEdge, newConnection, els));
     }
   }, [setEdges]);
@@ -128,6 +127,7 @@ function HomeContent() {
     });
   }, [setDbmlInput]);
 
+  // Initial Data Loading
   useEffect(() => {
     let saved = storage.getSchemas();
     if (saved.length === 0 && storage.isFirstRun()) {
@@ -151,6 +151,7 @@ function HomeContent() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Handle Switching between Schemas
   useEffect(() => {
     if (!currentSchema) return;
     storage.setLastSchemaId(currentSchema.id);
@@ -158,37 +159,51 @@ function HomeContent() {
     setSchemaName(currentSchema.name);
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
+    
     const layout = currentSchema.layout || {};
     const layoutNodes = parsedNodes.map(n => ({ ...n, position: layout[n.id] || n.position }));
     setNodes(layoutNodes);
     
-    const savedHandles = (layout.edgeHandles || {}) as Record<string, any>;
+    const savedHandles = (layout.edgeHandles || {}) as Record<string, EdgeHandleMetadata>;
     const edgesWithHandles = parsedEdges.map(e => {
-      if (savedHandles[e.id]) { return { ...e, sourceHandle: savedHandles[e.id].sh, targetHandle: savedHandles[e.id].th }; }
+      const metadata = savedHandles[e.id];
+      if (metadata) { 
+        return { 
+          ...e, 
+          sourceHandle: metadata.sh || e.sourceHandle, 
+          targetHandle: metadata.th || e.targetHandle 
+        }; 
+      }
       return e;
     });
     setEdges(edgesWithHandles);
     setTimeout(() => fitView({ padding: 0.2 }), 50);
   }, [currentSchema?.id]);
 
+  // Handle live updates
   useEffect(() => {
     if (isInitialLoad.current || !currentSchema) return;
     const { nodes: nextNodes, edges: nextEdges, error: parseErr } = parseDBML(dbmlInput, nodes);
     setValidationError(parseErr);
     if (!parseErr) {
       if (JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data }))) !== JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })))) { setNodes(nextNodes); }
-      const currentHandleState = (currentSchema.layout?.edgeHandles || {}) as Record<string, any>;
+      
+      const currentHandleState = (currentSchema.layout?.edgeHandles || {}) as Record<string, EdgeHandleMetadata>;
       const nextEdgesWithHandles = nextEdges.map(e => {
         const existing = edges.find(old => old.id === e.id) || { sourceHandle: currentHandleState[e.id]?.sh, targetHandle: currentHandleState[e.id]?.th };
         if (existing.sourceHandle) { return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle }; }
         return e;
       });
+
       const currentEdgesJson = JSON.stringify(edges.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle })));
       const nextEdgesJson = JSON.stringify(nextEdgesWithHandles.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle })));
-      if (currentEdgesJson !== nextEdgesJson) { setEdges(nextEdgesWithHandles); }
+      if (currentEdgesJson !== nextEdgesJson) {
+        setEdges(nextEdgesWithHandles);
+      }
     }
   }, [dbmlInput]);
 
+  // Autosave
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!currentSchema) return;
@@ -196,6 +211,7 @@ function HomeContent() {
     nodes.forEach(n => { layout[n.id] = n.position; });
     layout.edgeHandles = {};
     edges.forEach(e => { layout.edgeHandles[e.id] = { sh: e.sourceHandle, th: e.targetHandle }; });
+
     const hasChanges = dbmlInput !== currentSchema.dbml || schemaName !== currentSchema.name || JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
     if (!hasChanges) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -209,6 +225,28 @@ function HomeContent() {
     }, 1500);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [dbmlInput, schemaName, nodes, edges]);
+
+  // Restored Panel Resize Logic
+  const stopResizing = useCallback(() => {
+    isResizing.current = false;
+    document.body.style.cursor = 'default';
+  }, []);
+
+  const resize = useCallback((e: MouseEvent) => {
+    if (!isResizing.current) return;
+    const sidebarWidth = isSidebarOpen ? 256 : 0;
+    const newWidth = e.clientX - sidebarWidth;
+    if (newWidth > 300 && newWidth < 800) setLeftPanelWidth(newWidth);
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', resize);
+    window.addEventListener('mouseup', stopResizing);
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [resize, stopResizing]);
 
   const handleNewSchema = () => {
     const name = window.prompt('New Sketch Name', 'Untitled Sketch') || 'New Sketch';
@@ -342,7 +380,7 @@ function HomeContent() {
                 </div>
               </div>
             </div>
-            <div onMouseDown={() => (isResizing.current = true)} className="hidden md:flex absolute top-0 -right-1.5 w-3 h-full cursor-col-resize hover:bg-indigo-500/10 active:bg-indigo-500/20 transition-colors z-30 items-center justify-center group"><div className="w-0.5 h-12 bg-slate-200 group-hover:bg-indigo-400 rounded-full transition-colors" /></div>
+            <div onMouseDown={() => { isResizing.current = true; document.body.style.cursor = 'col-resize'; }} className="hidden md:flex absolute top-0 -right-1.5 w-3 h-full cursor-col-resize hover:bg-indigo-500/10 active:bg-indigo-500/20 transition-colors z-30 items-center justify-center group"><div className="w-0.5 h-12 bg-slate-200 group-hover:bg-indigo-400 rounded-full transition-colors" /></div>
           </div>
           <div className={`flex-grow relative overflow-hidden bg-[#fdfdfd] ${activeTab !== 'canvas' ? 'hidden md:block' : 'block'}`}>
             <VisualCanvas nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onEdgeUpdate={onEdgeUpdate} onTableColorChange={onTableColorChange} />
