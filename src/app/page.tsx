@@ -127,7 +127,7 @@ function HomeContent() {
     });
   }, [setDbmlInput]);
 
-  // Initial Data Loading
+  // 1. Initial Load
   useEffect(() => {
     let saved = storage.getSchemas();
     if (saved.length === 0 && storage.isFirstRun()) {
@@ -140,6 +140,7 @@ function HomeContent() {
     const lastId = storage.getLastSchemaId();
     const lastSchema = saved.find(s => s.id === lastId);
     if (lastSchema) { setCurrentSchema(lastSchema); } else if (saved.length > 0) { setCurrentSchema(saved[0]); }
+    
     const checkMobile = () => {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
@@ -151,12 +152,13 @@ function HomeContent() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Handle Switching between Schemas
+  // 2. Handle Schema Switching
   useEffect(() => {
     if (!currentSchema) return;
     storage.setLastSchemaId(currentSchema.id);
     setDbmlInput(currentSchema.dbml);
     setSchemaName(currentSchema.name);
+    
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
     
@@ -166,32 +168,27 @@ function HomeContent() {
     
     const savedHandles = (layout.edgeHandles || {}) as Record<string, EdgeHandleMetadata>;
     const edgesWithHandles = parsedEdges.map(e => {
-      const metadata = savedHandles[e.id];
-      if (metadata) { 
-        return { 
-          ...e, 
-          sourceHandle: metadata.sh || e.sourceHandle, 
-          targetHandle: metadata.th || e.targetHandle 
-        }; 
-      }
-      return e;
+      const meta = savedHandles[e.id];
+      return meta ? { ...e, sourceHandle: meta.sh || e.sourceHandle, targetHandle: meta.th || e.targetHandle } : e;
     });
     setEdges(edgesWithHandles);
     setTimeout(() => fitView({ padding: 0.2 }), 50);
   }, [currentSchema?.id]);
 
-  // Handle live updates
+  // 3. Live Updates (Code -> Visuals)
   useEffect(() => {
     if (isInitialLoad.current || !currentSchema) return;
     const { nodes: nextNodes, edges: nextEdges, error: parseErr } = parseDBML(dbmlInput, nodes);
     setValidationError(parseErr);
     if (!parseErr) {
-      if (JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data }))) !== JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })))) { setNodes(nextNodes); }
+      if (JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data }))) !== JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })))) {
+        setNodes(nextNodes);
+      }
       
-      const currentHandleState = (currentSchema.layout?.edgeHandles || {}) as Record<string, EdgeHandleMetadata>;
+      // Preserve current handle choices during live sync
       const nextEdgesWithHandles = nextEdges.map(e => {
-        const existing = edges.find(old => old.id === e.id) || { sourceHandle: currentHandleState[e.id]?.sh, targetHandle: currentHandleState[e.id]?.th };
-        if (existing.sourceHandle) { return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle }; }
+        const existing = edges.find(old => old.id === e.id);
+        if (existing) { return { ...e, sourceHandle: existing.sourceHandle, targetHandle: existing.targetHandle }; }
         return e;
       });
 
@@ -203,16 +200,23 @@ function HomeContent() {
     }
   }, [dbmlInput]);
 
-  // Autosave
+  // 4. Autosave (Visuals/Code -> Storage)
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!currentSchema) return;
+    
+    // Prepare layout with edge handles
+    const edgeHandles: Record<string, EdgeHandleMetadata> = {};
+    edges.forEach(e => { edgeHandles[e.id] = { sh: e.sourceHandle, th: e.targetHandle }; });
+    
     const layout: any = {};
     nodes.forEach(n => { layout[n.id] = n.position; });
-    layout.edgeHandles = {};
-    edges.forEach(e => { layout.edgeHandles[e.id] = { sh: e.sourceHandle, th: e.targetHandle }; });
+    layout.edgeHandles = edgeHandles;
 
-    const hasChanges = dbmlInput !== currentSchema.dbml || schemaName !== currentSchema.name || JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
+    const hasChanges = dbmlInput !== currentSchema.dbml || 
+                       schemaName !== currentSchema.name || 
+                       JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
+    
     if (!hasChanges) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     setIsSaving(true);
@@ -220,18 +224,14 @@ function HomeContent() {
       const updatedSchema: Schema = { ...currentSchema, name: schemaName, dbml: dbmlInput, layout, updatedAt: Date.now() };
       storage.saveSchema(updatedSchema);
       setSchemas(storage.getSchemas());
-      setCurrentSchema(updatedSchema);
+      // Important: don't call setCurrentSchema here to avoid loop, just update schemas list
       setIsSaving(false);
     }, 1500);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [dbmlInput, schemaName, nodes, edges]);
 
-  // Restored Panel Resize Logic
-  const stopResizing = useCallback(() => {
-    isResizing.current = false;
-    document.body.style.cursor = 'default';
-  }, []);
-
+  // 5. Panel Resizing
+  const stopResizing = useCallback(() => { isResizing.current = false; document.body.style.cursor = 'default'; }, []);
   const resize = useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;
     const sidebarWidth = isSidebarOpen ? 256 : 0;
@@ -242,10 +242,7 @@ function HomeContent() {
   useEffect(() => {
     window.addEventListener('mousemove', resize);
     window.addEventListener('mouseup', stopResizing);
-    return () => {
-      window.removeEventListener('mousemove', resize);
-      window.removeEventListener('mouseup', stopResizing);
-    };
+    return () => { window.removeEventListener('mousemove', resize); window.removeEventListener('mouseup', stopResizing); };
   }, [resize, stopResizing]);
 
   const handleNewSchema = () => {
@@ -283,10 +280,8 @@ function HomeContent() {
 
   const handleDownload = () => {
     if (!dbmlInput) return;
-    const blob = new Blob([dbmlInput], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(new Blob([dbmlInput], { type: 'text/plain' }));
     a.download = `${schemaName || 'schema'}.dbml`;
     a.click();
   };
