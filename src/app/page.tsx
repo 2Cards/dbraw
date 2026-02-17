@@ -45,7 +45,6 @@ function HomeContent() {
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [dbmlInput, setDbmlInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -96,32 +95,26 @@ function HomeContent() {
     });
   }, [setDbmlInput]);
 
+  // Restricted onEdgeUpdate: Only allow switching sides, no field change, no DBML update
   const onEdgeUpdate = useCallback((oldEdge: Edge, newConnection: any) => {
     const { source, sourceHandle, target, targetHandle } = newConnection;
     
-    setDbmlInput(prev => {
-      const oldSourceField = oldEdge.sourceHandle?.split('-')[0];
-      const oldTargetField = oldEdge.targetHandle?.split('-')[0];
-      
-      const escapedSource = oldEdge.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const escapedTarget = oldEdge.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      const oldRefRegex = new RegExp(`Ref:\\s*${escapedSource}\\.${oldSourceField}\\s*(>|<|-)\\s*${escapedTarget}\\.${oldTargetField}(\\s|\\n|$)`, 'i');
-      
-      const newSourceField = sourceHandle?.split('-')[0];
-      const newTargetField = targetHandle?.split('-')[0];
-      const newRef = `Ref: ${source}.${newSourceField} > ${target}.${newTargetField}`;
-      
-      if (oldRefRegex.test(prev)) {
-        return prev.replace(oldRefRegex, (match) => {
-          const suffix = match.endsWith('\n') ? '\n' : (match.endsWith(' ') ? ' ' : '');
-          return newRef + suffix;
-        });
-      }
-      return prev + `\n${newRef}`;
-    });
-    setEdges((els) => updateEdge(oldEdge, newConnection, els));
-  }, [setEdges, setDbmlInput]);
+    // Extract field names
+    const oldSourceField = oldEdge.sourceHandle?.split('-')[0];
+    const oldTargetField = oldEdge.targetHandle?.split('-')[0];
+    const newSourceField = sourceHandle?.split('-')[0];
+    const newTargetField = targetHandle?.split('-')[0];
+
+    // Only allow if it's the SAME nodes and SAME fields
+    const isSameEdge = source === oldEdge.source && 
+                       target === oldEdge.target && 
+                       newSourceField === oldSourceField && 
+                       newTargetField === oldTargetField;
+
+    if (isSameEdge) {
+      setEdges((els) => updateEdge(oldEdge, newConnection, els));
+    }
+  }, [setEdges]);
 
   const onTableColorChange = useCallback((tableName: string, color: string) => {
     setDbmlInput(prev => {
@@ -149,9 +142,6 @@ function HomeContent() {
       const { nodes: dNodes, edges: dEdges } = parseDBML(demoSchema.dbml);
       setTimeout(() => handleAutoLayout(dNodes, dEdges), 500);
     }
-    ['demo-v1', 'demo-v2', 'demo-v3'].forEach(id => {
-      if (saved.some(s => s.id === id)) { storage.deleteSchema(id); saved = saved.filter(s => s.id !== id); }
-    });
     setSchemas(saved);
     if (!currentSchema && saved.length > 0) { setCurrentSchema(saved[0]); }
     const checkMobile = () => {
@@ -169,16 +159,18 @@ function HomeContent() {
     if (!currentSchema) return;
     setDbmlInput(currentSchema.dbml);
     setSchemaName(currentSchema.name);
+    
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
+    
     const layoutNodes = parsedNodes.map(n => ({ ...n, position: currentSchema.layout?.[n.id] || n.position }));
     setNodes(layoutNodes);
     
-    // Attempt to restore handle sides from edges state if available
+    // Restore edge handle sides from metadata
+    const savedHandles = currentSchema.layout?.edgeHandles || {};
     const edgesWithHandles = parsedEdges.map(e => {
-      const savedEdge = edges.find(se => se.id === e.id);
-      if (savedEdge) {
-        return { ...e, sourceHandle: savedEdge.sourceHandle, targetHandle: savedEdge.targetHandle };
+      if (savedHandles[e.id]) {
+        return { ...e, sourceHandle: savedHandles[e.id].sh, targetHandle: savedHandles[e.id].th };
       }
       return e;
     });
@@ -192,9 +184,11 @@ function HomeContent() {
     const { nodes: nextNodes, edges: nextEdges, error: parseErr } = parseDBML(dbmlInput, nodes);
     setValidationError(parseErr);
     if (!parseErr) {
-      const currentNodesJson = JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data })));
-      const nextNodesJson = JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })));
+      if (JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data }))) !== JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })))) {
+        setNodes(nextNodes);
+      }
       
+      // Preserve current handle choices during live sync
       const nextEdgesWithHandles = nextEdges.map(e => {
         const existing = edges.find(old => old.id === e.id);
         if (existing) {
@@ -203,20 +197,24 @@ function HomeContent() {
         return e;
       });
 
-      const currentEdgesJson = JSON.stringify(edges.map(e => ({ source: e.source, target: e.target, sh: e.sourceHandle, th: e.targetHandle })));
-      const nextEdgesJson = JSON.stringify(nextEdgesWithHandles.map(e => ({ source: e.source, target: e.target, sh: e.sourceHandle, th: e.targetHandle })));
-      
-      if (currentNodesJson !== nextNodesJson) setNodes(nextNodes);
-      if (currentEdgesJson !== nextEdgesJson) setEdges(nextEdgesWithHandles);
+      if (JSON.stringify(edges.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle }))) !== JSON.stringify(nextEdgesWithHandles.map(e => ({ id: e.id, sh: e.sourceHandle, th: e.targetHandle })))) {
+        setEdges(nextEdgesWithHandles);
+      }
     }
   }, [dbmlInput]);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!currentSchema) return;
-    const layout: Record<string, { x: number; y: number }> = {};
+    const layout: any = {};
     nodes.forEach(n => { layout[n.id] = n.position; });
     
+    // Persist edge sides in layout metadata
+    layout.edgeHandles = {};
+    edges.forEach(e => {
+      layout.edgeHandles[e.id] = { sh: e.sourceHandle, th: e.targetHandle };
+    });
+
     const hasChanges = dbmlInput !== currentSchema.dbml || schemaName !== currentSchema.name || JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
     if (!hasChanges) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -229,22 +227,7 @@ function HomeContent() {
       setIsSaving(false);
     }, 1500);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [dbmlInput, schemaName, nodes]);
-
-  const startResizing = useCallback(() => { isResizing.current = true; document.body.style.cursor = 'col-resize'; }, []);
-  const stopResizing = useCallback(() => { isResizing.current = false; document.body.style.cursor = 'default'; }, []);
-  const resize = useCallback((e: MouseEvent) => {
-    if (!isResizing.current) return;
-    const sidebarWidth = isSidebarOpen ? 256 : 0;
-    const newWidth = e.clientX - sidebarWidth;
-    if (newWidth > 300 && newWidth < 800) setLeftPanelWidth(newWidth);
-  }, [isSidebarOpen]);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    return () => { window.removeEventListener('mousemove', resize); window.removeEventListener('mouseup', stopResizing); };
-  }, [resize, stopResizing]);
+  }, [dbmlInput, schemaName, nodes, edges]);
 
   const handleNewSchema = () => {
     const name = window.prompt('New Sketch Name', 'Untitled Sketch') || 'New Sketch';
@@ -259,19 +242,15 @@ function HomeContent() {
   const handleGenerate = async () => {
     if (!userInput) return;
     setIsLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/generate', { method: 'POST', body: JSON.stringify({ prompt: userInput, currentDbml: dbmlInput }) });
       const data = await res.json();
       if (res.ok && data.dbml) {
-        const cleanDbml = data.dbml.replace(/```dbml|```/g, '').trim();
-        setDbmlInput(cleanDbml);
+        setDbmlInput(data.dbml.replace(/```dbml|```/g, '').trim());
         setUserInput('');
         if (isMobile) setActiveTab('canvas');
-      } else {
-        setError(data.error || 'AI limit reached.');
       }
-    } catch (err) { setError('Connection refused.'); } finally { setIsLoading(false); }
+    } catch (err) {} finally { setIsLoading(false); }
   };
 
   const handleDelete = (id: string) => {
@@ -294,8 +273,6 @@ function HomeContent() {
   };
 
   const handleExportImage = async () => {
-    const currentNodes = getNodes();
-    if (currentNodes.length === 0) return;
     const element = document.querySelector('.react-flow') as HTMLElement;
     if (!element) return;
     try {
@@ -304,10 +281,7 @@ function HomeContent() {
       await new Promise(resolve => setTimeout(resolve, 100));
       const dataUrl = await toPng(element, {
         backgroundColor: '#fdfdfd',
-        filter: (node: HTMLElement) => {
-          const exclusionClasses = ['react-flow__controls', 'react-flow__attribution'];
-          return !exclusionClasses.some((cls) => node.classList?.contains(cls));
-        },
+        filter: (node: HTMLElement) => !['react-flow__controls', 'react-flow__attribution'].some((cls) => node.classList?.contains(cls)),
         pixelRatio: 2,
         cacheBust: true,
       });
@@ -315,40 +289,23 @@ function HomeContent() {
       a.setAttribute('download', `${schemaName || 'schema'}.png`);
       a.setAttribute('href', dataUrl);
       a.click();
-    } catch (err) {
-      console.error('Export failed', err);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err) {} finally { setIsLoading(false); }
   };
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#fdfdfd] text-slate-900 font-handwritten antialiased selection:bg-indigo-100 relative">
-      <aside className={`
-        fixed md:relative z-50 h-full border-r-2 border-slate-900 bg-[#f8f9fa] transition-all duration-300 flex flex-col overflow-hidden shrink-0
-        ${isSidebarOpen ? 'w-64 translate-x-0' : '-translate-x-full md:translate-x-0 md:w-0'}
-      `}>
+      <aside className={`fixed md:relative z-50 h-full border-r-2 border-slate-900 bg-[#f8f9fa] transition-all duration-300 flex flex-col overflow-hidden shrink-0 ${isSidebarOpen ? 'w-64 translate-x-0' : '-translate-x-full md:translate-x-0 md:w-0'}`}>
         <div className="p-5 border-b-2 border-slate-900 flex justify-between items-center bg-white text-slate-900">
-          <div className="flex items-center gap-2">
-            <PencilLine size={20} className="text-slate-900" />
-            <span className="font-bold text-lg tracking-tight">DBRaw</span>
-          </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 text-slate-900">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2"><PencilLine size={20} className="text-slate-900" /><span className="font-bold text-lg tracking-tight">DBRaw</span></div>
+          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 text-slate-900"><X size={20} /></button>
         </div>
         <div className="flex-grow overflow-y-auto p-3 space-y-4">
-          <button onClick={handleNewSchema} className="w-full py-2 px-4 border-2 border-dashed border-slate-300 hover:border-slate-900 hover:bg-white rounded-xl text-xs font-bold text-slate-400 hover:text-slate-900 transition-all flex items-center justify-center gap-2">
-            <FilePlus size={14} /> New Sketch
-          </button>
+          <button onClick={handleNewSchema} className="w-full py-2 px-4 border-2 border-dashed border-slate-300 hover:border-slate-900 hover:bg-white rounded-xl text-xs font-bold text-slate-400 hover:text-slate-900 transition-all flex items-center justify-center gap-2"><FilePlus size={14} /> New Sketch</button>
           <div className="px-2 pt-2">
             <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Saved Sketches</h2>
             <div className="space-y-2">
               {schemas.map((s) => (
-                <div key={s.id} 
-                  className={`group p-3 rounded-lg border-2 transition-all flex justify-between items-center cursor-pointer ${currentSchema?.id === s.id ? 'bg-indigo-50 border-slate-900 shadow-[2px_2px_0_0_rgba(0,0,0,1)]' : 'bg-white border-slate-200 hover:border-slate-400'}`}
-                  onClick={() => { setCurrentSchema(s); if (isMobile) setIsSidebarOpen(false); }}
-                >
+                <div key={s.id} className={`group p-3 rounded-lg border-2 transition-all flex justify-between items-center cursor-pointer ${currentSchema?.id === s.id ? 'bg-indigo-50 border-slate-900 shadow-[2px_2px_0_0_rgba(0,0,0,1)]' : 'bg-white border-slate-200 hover:border-slate-400'}`} onClick={() => { setCurrentSchema(s); if (isMobile) setIsSidebarOpen(false); }}>
                   <span className="text-xs font-bold truncate pr-2">{s.name}</span>
                   <Trash2 size={14} className="opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all cursor-pointer" onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} />
                 </div>
@@ -357,39 +314,23 @@ function HomeContent() {
           </div>
         </div>
       </aside>
-
       <div className="flex-grow flex flex-col min-w-0 h-full">
         <nav className="h-14 border-b-2 border-slate-900 bg-white flex items-center justify-between px-4 z-20 shrink-0 shadow-sm text-slate-900">
           <div className="flex items-center gap-3 flex-grow max-w-xl">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-900 border border-slate-200">
-              <Menu size={18} />
-            </button>
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-900 border border-slate-200"><Menu size={18} /></button>
             <div className="h-4 w-px bg-slate-200 hidden md:block" />
             <input value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="Untitled Sketch" className="flex-grow text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0_0_rgba(0,0,0,1)] outline-none focus:bg-indigo-50/50 transition-colors text-slate-900 placeholder:text-slate-300 min-w-0" />
             {isSaving && <span className="text-[10px] text-slate-400 animate-pulse shrink-0 hidden sm:block">Saving...</span>}
           </div>
           <div className="flex items-center gap-2 font-sans ml-2 shrink-0">
-            <button onClick={() => handleAutoLayout()} title="Auto-layout schema" className="p-2 md:px-3 md:py-1.5 bg-indigo-50 border-2 border-slate-900 hover:bg-indigo-100 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all">
-              <Wand2 size={16} className="md:mr-2 inline" /><span className="hidden md:inline">Magic</span>
-            </button>
-            <button onClick={handleExportImage} title="Export to PNG" className="p-2 md:px-3 md:py-1.5 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all">
-              <ImageIcon size={16} className="md:mr-2 inline" /><span className="hidden md:inline">PNG</span>
-            </button>
-            <button onClick={handleDownload} title="Export DBML" className="p-2 md:px-4 md:py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all">
-              <Download size={16} className="md:mr-2 inline" /><span className="hidden md:inline">DBML</span>
-            </button>
+            <button onClick={() => handleAutoLayout()} title="Auto-layout schema" className="p-2 md:px-3 md:py-1.5 bg-indigo-50 border-2 border-slate-900 hover:bg-indigo-100 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all"><Wand2 size={16} className="md:mr-2 inline" /><span className="hidden md:inline">Magic</span></button>
+            <button onClick={handleExportImage} title="Export to PNG" className="p-2 md:px-3 md:py-1.5 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all"><ImageIcon size={16} className="md:mr-2 inline" /><span className="hidden md:inline">PNG</span></button>
+            <button onClick={handleDownload} title="Export DBML" className="p-2 md:px-4 md:py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all"><Download size={16} className="md:mr-2 inline" /><span className="hidden md:inline">DBML</span></button>
           </div>
         </nav>
-
         <div className="md:hidden flex border-b-2 border-slate-900 bg-[#f8f9fa] p-1 font-sans">
           {(['prompt', 'code', 'canvas'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-grow py-2 text-[10px] font-bold uppercase tracking-tighter rounded-lg transition-all flex items-center justify-center gap-1 ${
-                activeTab === tab ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500'
-              }`}
-            >
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-grow py-2 text-[10px] font-bold uppercase tracking-tighter rounded-lg transition-all flex items-center justify-center gap-1 ${activeTab === tab ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500'}`}>
               {tab === 'prompt' && <Sparkles size={12} />}
               {tab === 'code' && <Code size={12} />}
               {tab === 'canvas' && <Eye size={12} />}
@@ -397,83 +338,34 @@ function HomeContent() {
             </button>
           ))}
         </div>
-
         <div className="flex-grow flex overflow-hidden bg-white relative">
-          <div 
-            style={{ width: !isMobile ? `${leftPanelWidth}px` : '100%' }} 
-            className={`
-              ${activeTab === 'canvas' ? 'hidden md:flex' : 'flex'}
-              border-r-2 border-slate-900 flex-col bg-[#fcfcfc] z-10 shrink-0 relative
-              ${activeTab !== 'canvas' ? 'absolute inset-0 md:relative' : ''}
-            `}
-          >
+          <div style={{ width: !isMobile ? `${leftPanelWidth}px` : '100%' }} className={`${activeTab === 'canvas' ? 'hidden md:flex' : 'flex'} border-r-2 border-slate-900 flex-col bg-[#fcfcfc] z-10 shrink-0 relative ${activeTab !== 'canvas' ? 'absolute inset-0 md:relative' : ''}`}>
             <div className="flex-grow flex flex-col p-4 space-y-4 overflow-hidden">
               <div className={`${activeTab === 'prompt' ? 'hidden md:flex' : 'flex'} flex-grow flex flex-col min-h-0 text-slate-900 relative`}>
                 <div className="flex items-center justify-between mb-2 px-1">
-                  <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <Code size={12} /><span>DBML Blueprint</span>
-                  </div>
-                  {validationError && (
-                    <div className="flex items-center gap-1.5 text-red-600 animate-pulse">
-                      <AlertCircle size={12} />
-                      <span className="text-[10px] font-bold uppercase tracking-tight">Syntax Error</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><Code size={12} /><span>DBML Blueprint</span></div>
+                  {validationError && <div className="flex items-center gap-1.5 text-red-600 animate-pulse"><AlertCircle size={12} /><span className="text-[10px] font-bold uppercase tracking-tight">Syntax Error</span></div>}
                 </div>
                 <div className={`flex-grow bg-white border-2 rounded-2xl shadow-[4px_4px_0_0_rgba(0,0,0,0.05)] text-slate-900 flex flex-col relative overflow-hidden transition-colors duration-300 ${validationError ? 'border-red-500 ring-2 ring-red-50' : 'border-slate-900'}`}>
                   <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
                     <Editor value={dbmlInput} onValueChange={code => setDbmlInput(code)} highlight={code => dbmlHighlight(code)} padding={20} style={{ fontFamily: '"Geist Mono", monospace', fontSize: 13, outline: 'none', color: '#1e293b', minHeight: '100%' }} className="dbml-editor text-slate-900 pb-20" />
                   </div>
-                  {validationError && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white p-3 text-[11px] font-sans flex items-start gap-2 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.1)]">
-                      <Terminal size={14} className="shrink-0 mt-0.5" />
-                      <span className="leading-tight">{validationError}</span>
-                    </div>
-                  )}
+                  {validationError && <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white p-3 text-[11px] font-sans flex items-start gap-2 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.1)]"><Terminal size={14} className="shrink-0 mt-0.5" /><span className="leading-tight">{validationError}</span></div>}
                 </div>
               </div>
-
               <div className={`${activeTab === 'code' ? 'hidden md:block' : 'block'} relative shrink-0`}>
-                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">
-                  <Sparkles size={12} /><span>AI Architect</span>
-                </div>
+                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1"><Sparkles size={12} /><span>AI Architect</span></div>
                 <div className="relative">
                   <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Explain changes (e.g. 'add a status field to users')..." className="w-full h-24 md:h-28 p-4 text-sm bg-white border-2 border-slate-900 rounded-xl focus:ring-0 outline-none placeholder:text-slate-300 resize-none shadow-[4px_4px_0_0_rgba(0,0,0,0.05)] text-slate-900" />
-                  <button 
-                    onClick={handleGenerate} 
-                    disabled={isLoading || !userInput} 
-                    className="absolute bottom-4 right-4 p-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-30 shadow-[2px_2px_0_0_rgba(0,0,0,1)] border border-slate-900"
-                  >
-                    {isLoading ? <Loader2 className="animate-spin text-white" size={16} /> : <Sparkles className="text-white" size={16} />}
-                  </button>
+                  <button onClick={handleGenerate} disabled={isLoading || !userInput} className="absolute bottom-4 right-4 p-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-30 shadow-[2px_2px_0_0_rgba(0,0,0,1)] border border-slate-900">{isLoading ? <Loader2 className="animate-spin text-white" size={16} /> : <Sparkles className="text-white" size={16} />}</button>
                 </div>
               </div>
-
-              {error && <div className="p-3 bg-red-50 border-2 border-red-900 rounded-xl flex items-center gap-2 text-red-900 text-[11px] shrink-0"><AlertCircle size={14} /><span>{error}</span></div>}
             </div>
-            <div onMouseDown={startResizing} className="hidden md:flex absolute top-0 -right-1.5 w-3 h-full cursor-col-resize hover:bg-indigo-500/10 active:bg-indigo-500/20 transition-colors z-30 items-center justify-center group">
-              <div className="w-0.5 h-12 bg-slate-200 group-hover:bg-indigo-400 rounded-full transition-colors" />
-            </div>
+            <div onMouseDown={startResizing} className="hidden md:flex absolute top-0 -right-1.5 w-3 h-full cursor-col-resize hover:bg-indigo-500/10 active:bg-indigo-500/20 transition-colors z-30 items-center justify-center group"><div className="w-0.5 h-12 bg-slate-200 group-hover:bg-indigo-400 rounded-full transition-colors" /></div>
           </div>
-
           <div className={`flex-grow relative overflow-hidden bg-[#fdfdfd] ${activeTab !== 'canvas' ? 'hidden md:block' : 'block'}`}>
-            <VisualCanvas 
-              nodes={nodes} 
-              edges={edges} 
-              onNodesChange={onNodesChange} 
-              onEdgesChange={onEdgesChange} 
-              onConnect={onConnect} 
-              onEdgeUpdate={onEdgeUpdate}
-              onTableColorChange={onTableColorChange}
-            />
-            {!dbmlInput && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-900">
-                <div className="flex flex-col items-center gap-4 text-slate-300">
-                  <Database size={60} className="opacity-10 text-slate-900" />
-                  <p className="text-sm font-bold tracking-widest opacity-20 uppercase">Empty Canvas</p>
-                </div>
-              </div>
-            )}
+            <VisualCanvas nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onEdgeUpdate={onEdgeUpdate} onTableColorChange={onTableColorChange} />
+            {!dbmlInput && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-900"><div className="flex flex-col items-center gap-4 text-slate-300"><Database size={60} className="opacity-10 text-slate-900" /><p className="text-sm font-bold tracking-widest opacity-20 uppercase">Empty Canvas</p></div></div>}
           </div>
         </div>
       </div>
