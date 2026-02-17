@@ -61,6 +61,41 @@ function HomeContent() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { getNodes, fitView } = useReactFlow();
 
+  const handleAutoLayout = useCallback((currentNodes?: Node[], currentEdges?: Edge[]) => {
+    const nodesToLayout = currentNodes || nodes;
+    const edgesToLayout = currentEdges || edges;
+    
+    if (nodesToLayout.length === 0) return;
+
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 200 });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    nodesToLayout.forEach((node) => {
+      g.setNode(node.id, { width: 250, height: node.data.fields.length * 30 + 80 });
+    });
+
+    edgesToLayout.forEach((edge) => {
+      g.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(g);
+
+    const layoutedNodes = nodesToLayout.map((node) => {
+      const nodeWithPosition = g.node(node.id);
+      return {
+        ...node,
+        position: {
+          x: nodeWithPosition.x - 125,
+          y: nodeWithPosition.y - 40,
+        },
+      };
+    });
+
+    setNodes(layoutedNodes);
+    setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 100);
+  }, [nodes, edges, setNodes, fitView]);
+
   const onConnect = useCallback((params: any) => {
     const { source, sourceHandle, target, targetHandle } = params;
     if (!source || !sourceHandle || !target || !targetHandle) return;
@@ -95,18 +130,26 @@ function HomeContent() {
   useEffect(() => {
     let saved = storage.getSchemas();
     
-    // Check if initial-demo exists, if not - add it
-    const hasDemo = saved.some(s => s.id === 'initial-demo');
-    if (!hasDemo) {
+    // Logic: Only add demo if NO schemas exist AND it's the very first time (flag missing)
+    if (saved.length === 0 && storage.isFirstRun()) {
       const demoSchema = storage.initDefault();
-      saved = [demoSchema]; // Start with ONLY the demo schema
+      saved = [demoSchema];
       
-      // Clean up old versions from localStorage if they exist
-      ['demo-v1', 'demo-v2', 'demo-v3'].forEach(id => storage.deleteSchema(id));
+      // Auto-trigger Magic for the demo schema
+      const { nodes: dNodes, edges: dEdges } = parseDBML(demoSchema.dbml);
+      setTimeout(() => handleAutoLayout(dNodes, dEdges), 500);
     }
     
+    // Cleanup old internal IDs silently
+    ['demo-v1', 'demo-v2', 'demo-v3'].forEach(id => {
+      if (saved.some(s => s.id === id)) {
+        storage.deleteSchema(id);
+        saved = saved.filter(s => s.id !== id);
+      }
+    });
+
     setSchemas(saved);
-    if (!currentSchema) {
+    if (!currentSchema && saved.length > 0) {
       setCurrentSchema(saved[0]);
     }
 
@@ -131,7 +174,7 @@ function HomeContent() {
     setDbmlInput(currentSchema.dbml);
     setSchemaName(currentSchema.name);
 
-    // 2. Sync Visual Canvas (Important: Load layout from schema)
+    // 2. Sync Visual Canvas
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
 
@@ -155,7 +198,6 @@ function HomeContent() {
     setValidationError(parseErr);
     
     if (!parseErr) {
-      // Comparison to avoid unnecessary updates
       const currentNodesJson = JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data })));
       const nextNodesJson = JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })));
       const currentEdgesJson = JSON.stringify(edges.map(e => ({ source: e.source, target: e.target })));
@@ -299,35 +341,6 @@ function HomeContent() {
     }
   };
 
-  const handleAutoLayout = useCallback(() => {
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 200 });
-    g.setDefaultEdgeLabel(() => ({}));
-
-    nodes.forEach((node) => {
-      g.setNode(node.id, { width: 250, height: node.data.fields.length * 30 + 80 });
-    });
-
-    edges.forEach((edge) => {
-      g.setEdge(edge.source, edge.target);
-    });
-
-    dagre.layout(g);
-
-    setNodes((nds) => nds.map((node) => {
-      const nodeWithPosition = g.node(node.id);
-      return {
-        ...node,
-        position: {
-          x: nodeWithPosition.x - 125,
-          y: nodeWithPosition.y - 40,
-        },
-      };
-    }));
-    
-    setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 100);
-  }, [nodes, edges, setNodes, fitView]);
-
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#fdfdfd] text-slate-900 font-handwritten antialiased selection:bg-indigo-100 relative">
       <aside className={`
@@ -352,7 +365,7 @@ function HomeContent() {
             <div className="space-y-2">
               {schemas.map((s) => (
                 <div key={s.id} 
-                  className={`group p-3 rounded-lg border-2 transition-all flex justify-between items-center cursor-pointer ${currentSchema?.id === s.id ? 'bg-indigo-50 border-slate-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white border-slate-200 hover:border-slate-400'}`}
+                  className={`group p-3 rounded-lg border-2 transition-all flex justify-between items-center cursor-pointer ${currentSchema?.id === s.id ? 'bg-indigo-50 border-slate-900 shadow-[2px_2px_0_0_rgba(0,0,0,1)]' : 'bg-white border-slate-200 hover:border-slate-400'}`}
                   onClick={() => { setCurrentSchema(s); if (isMobile) setIsSidebarOpen(false); }}
                 >
                   <span className="text-xs font-bold truncate pr-2">{s.name}</span>
@@ -371,17 +384,17 @@ function HomeContent() {
               <Menu size={18} />
             </button>
             <div className="h-4 w-px bg-slate-200 hidden md:block" />
-            <input value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="Untitled Sketch" className="flex-grow text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none focus:bg-indigo-50/50 transition-colors text-slate-900 placeholder:text-slate-300 min-w-0" />
+            <input value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="Untitled Sketch" className="flex-grow text-sm font-bold border-2 border-slate-900 px-3 py-1 bg-white shadow-[2px_2px_0_0_rgba(0,0,0,1)] outline-none focus:bg-indigo-50/50 transition-colors text-slate-900 placeholder:text-slate-300 min-w-0" />
             {isSaving && <span className="text-[10px] text-slate-400 animate-pulse shrink-0 hidden sm:block">Saving...</span>}
           </div>
           <div className="flex items-center gap-2 font-sans ml-2 shrink-0">
-            <button onClick={handleAutoLayout} title="Auto-layout schema" className="p-2 md:px-3 md:py-1.5 bg-indigo-50 border-2 border-slate-900 hover:bg-indigo-100 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
+            <button onClick={() => handleAutoLayout()} title="Auto-layout schema" className="p-2 md:px-3 md:py-1.5 bg-indigo-50 border-2 border-slate-900 hover:bg-indigo-100 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all">
               <Wand2 size={16} className="md:mr-2 inline" /><span className="hidden md:inline">Magic</span>
             </button>
-            <button onClick={handleExportImage} title="Export to PNG" className="p-2 md:px-3 md:py-1.5 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
+            <button onClick={handleExportImage} title="Export to PNG" className="p-2 md:px-3 md:py-1.5 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all">
               <ImageIcon size={16} className="md:mr-2 inline" /><span className="hidden md:inline">PNG</span>
             </button>
-            <button onClick={handleDownload} title="Export DBML" className="p-2 md:px-4 md:py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all">
+            <button onClick={handleDownload} title="Export DBML" className="p-2 md:px-4 md:py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all">
               <Download size={16} className="md:mr-2 inline" /><span className="hidden md:inline">DBML</span>
             </button>
           </div>
@@ -426,7 +439,7 @@ function HomeContent() {
                     </div>
                   )}
                 </div>
-                <div className={`flex-grow bg-white border-2 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] text-slate-900 flex flex-col relative overflow-hidden transition-colors duration-300 ${validationError ? 'border-red-500 ring-2 ring-red-50' : 'border-slate-900'}`}>
+                <div className={`flex-grow bg-white border-2 rounded-2xl shadow-[4px_4px_0_0_rgba(0,0,0,0.05)] text-slate-900 flex flex-col relative overflow-hidden transition-colors duration-300 ${validationError ? 'border-red-500 ring-2 ring-red-50' : 'border-slate-900'}`}>
                   <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
                     <Editor value={dbmlInput} onValueChange={code => setDbmlInput(code)} highlight={code => dbmlHighlight(code)} padding={20} style={{ fontFamily: '"Geist Mono", monospace', fontSize: 13, outline: 'none', color: '#1e293b', minHeight: '100%' }} className="dbml-editor text-slate-900 pb-20" />
                   </div>
@@ -444,11 +457,11 @@ function HomeContent() {
                   <Sparkles size={12} /><span>AI Architect</span>
                 </div>
                 <div className="relative">
-                  <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Explain changes (e.g. 'add a status field to users')..." className="w-full h-24 md:h-28 p-4 text-sm bg-white border-2 border-slate-900 rounded-xl focus:ring-0 outline-none placeholder:text-slate-300 resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)] text-slate-900" />
+                  <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Explain changes (e.g. 'add a status field to users')..." className="w-full h-24 md:h-28 p-4 text-sm bg-white border-2 border-slate-900 rounded-xl focus:ring-0 outline-none placeholder:text-slate-300 resize-none shadow-[4px_4px_0_0_rgba(0,0,0,0.05)] text-slate-900" />
                   <button 
                     onClick={handleGenerate} 
                     disabled={isLoading || !userInput} 
-                    className="absolute bottom-4 right-4 p-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-30 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] border border-slate-900"
+                    className="absolute bottom-4 right-4 p-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-30 shadow-[2px_2px_0_0_rgba(0,0,0,1)] border border-slate-900"
                   >
                     {isLoading ? <Loader2 className="animate-spin text-white" size={16} /> : <Sparkles className="text-white" size={16} />}
                   </button>

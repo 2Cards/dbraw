@@ -8,8 +8,9 @@ export interface Schema {
 }
 
 const STORAGE_KEY = 'schemaforge_schemas';
+const FIRST_RUN_KEY = 'dbraw_demo_initialized';
 
-const DEFAULT_DBML = `// DBRaw Default Schema ⚙️
+const DEFAULT_DBML = `// DBRaw Demo Schema ⚙️
 
 Table users [headercolor: #2ecc71] {
   id uuid [pk, default: \`gen_random_uuid()\`]
@@ -72,11 +73,8 @@ Ref: users.id < posts.user_id
 Ref: posts.id < comments.post_id
 Ref: users.id < comments.user_id`;
 
-const DEFAULT_LAYOUT = {
-  "users": { "x": 0, "y": 0 },
-  "posts": { "x": 450, "y": 0 },
-  "comments": { "x": 900, "y": 0 }
-};
+// Initial layout is empty to trigger Magic on first load
+const DEFAULT_LAYOUT = {};
 
 export const storage = {
   getSchemas: (): Schema[] => {
@@ -105,16 +103,27 @@ export const storage = {
     return storage.getSchemas().find((s) => s.id === id);
   },
 
+  isFirstRun: (): boolean => {
+    if (typeof window === 'undefined') return false;
+    return !localStorage.getItem(FIRST_RUN_KEY);
+  },
+
+  setInitialized: () => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(FIRST_RUN_KEY, 'true');
+  },
+
   initDefault: (): Schema => {
     const schema: Schema = {
       id: 'initial-demo',
-      name: 'Modern Web App (Demo)',
+      name: 'Demo Schema',
       dbml: DEFAULT_DBML,
       layout: DEFAULT_LAYOUT,
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
     storage.saveSchema(schema);
+    storage.setInitialized();
     return schema;
   }
 };
