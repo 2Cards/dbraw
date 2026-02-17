@@ -37,12 +37,12 @@ export const TableNode = memo(({ data, onColorChange }: any) => {
       <div className="py-2 bg-white rounded-b-[0px_0px_2px_4px]">
         {data.fields.map((field: any) => (
           <div key={field.name} className="px-4 py-1.5 flex justify-between items-center relative group hover:bg-slate-50 transition-colors">
-            {/* Target handle (incoming) on the left */}
+            {/* Left Multi-purpose Handle */}
             <Handle
-              type="target"
+              type="source"
               position={Position.Left}
-              id={`${field.name}-target`}
-              className="!w-2.5 !h-2.5 !bg-slate-900 !border-white !-left-1.5"
+              id={`${field.name}-left`}
+              className="!w-2.5 !h-2.5 !bg-slate-900 !border-white !-left-1.5 hover:!scale-150 transition-transform"
             />
             
             <div className="flex items-center gap-2 overflow-hidden mr-4">
@@ -58,12 +58,12 @@ export const TableNode = memo(({ data, onColorChange }: any) => {
               {field.type}
             </span>
 
-            {/* Source handle (outgoing) on the right */}
+            {/* Right Multi-purpose Handle */}
             <Handle
               type="source"
               position={Position.Right}
-              id={`${field.name}-source`}
-              className="!w-2.5 !h-2.5 !bg-slate-900 !border-white !-right-1.5"
+              id={`${field.name}-right`}
+              className="!w-2.5 !h-2.5 !bg-slate-900 !border-white !-right-1.5 hover:!scale-150 transition-transform"
             />
           </div>
         ))}

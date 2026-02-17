@@ -61,12 +61,14 @@ export const parseDBML = (dbml: string, existingNodes: Node[] = []): ParseResult
       const relTarget = targetEndpoint.relation === '1' ? '1' : 'N';
       const label = `${relSource}:${relTarget}`;
 
+      // Handle sides (default to left/right logic if not specified in comments/meta)
+      // For now we use -right for source and -left for target as default visual standard
       return {
         id: `ref-${index}`,
         source: sourceEndpoint.tableName,
-        sourceHandle: `${sourceFieldName}-source`,
+        sourceHandle: `${sourceFieldName}-right`,
         target: targetEndpoint.tableName,
-        targetHandle: `${targetFieldName}-target`,
+        targetHandle: `${targetFieldName}-left`,
         type: 'smoothstep',
         label: label,
         labelStyle: { fill: '#1e293b', fontWeight: 800, fontSize: 10, fontFamily: 'inherit' },

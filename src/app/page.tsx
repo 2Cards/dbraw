@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { VisualCanvas } from '@/components/editor/VisualCanvas';
 import { storage, Schema } from '@/lib/storage';
 import { parseDBML } from '@/lib/dbml-parser';
-import { useNodesState, useEdgesState, Node, Edge, ReactFlowProvider, useReactFlow, getRectOfNodes, getTransformForBounds } from 'reactflow';
+import { useNodesState, useEdgesState, Node, Edge, ReactFlowProvider, useReactFlow, getRectOfNodes, getTransformForBounds, updateEdge } from 'reactflow';
 import Editor from 'react-simple-code-editor';
 import { toPng } from 'html-to-image';
 import dagre from 'dagre';
@@ -64,34 +64,17 @@ function HomeContent() {
   const handleAutoLayout = useCallback((currentNodes?: Node[], currentEdges?: Edge[]) => {
     const nodesToLayout = currentNodes || nodes;
     const edgesToLayout = currentEdges || edges;
-    
     if (nodesToLayout.length === 0) return;
-
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 200 });
     g.setDefaultEdgeLabel(() => ({}));
-
-    nodesToLayout.forEach((node) => {
-      g.setNode(node.id, { width: 250, height: node.data.fields.length * 30 + 80 });
-    });
-
-    edgesToLayout.forEach((edge) => {
-      g.setEdge(edge.source, edge.target);
-    });
-
+    nodesToLayout.forEach((node) => { g.setNode(node.id, { width: 250, height: node.data.fields.length * 30 + 80 }); });
+    edgesToLayout.forEach((edge) => { g.setEdge(edge.source, edge.target); });
     dagre.layout(g);
-
     const layoutedNodes = nodesToLayout.map((node) => {
       const nodeWithPosition = g.node(node.id);
-      return {
-        ...node,
-        position: {
-          x: nodeWithPosition.x - 125,
-          y: nodeWithPosition.y - 40,
-        },
-      };
+      return { ...node, position: { x: nodeWithPosition.x - 125, y: nodeWithPosition.y - 40 } };
     });
-
     setNodes(layoutedNodes);
     setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 100);
   }, [nodes, edges, setNodes, fitView]);
@@ -99,19 +82,32 @@ function HomeContent() {
   const onConnect = useCallback((params: any) => {
     const { source, sourceHandle, target, targetHandle } = params;
     if (!source || !sourceHandle || !target || !targetHandle) return;
-
     const sourceField = sourceHandle.split('-')[0];
     const targetField = targetHandle.split('-')[0];
-
     const newRef = `\n\nRef: ${source}.${sourceField} > ${target}.${targetField}`;
     setDbmlInput(prev => prev.trim() + newRef);
   }, [setDbmlInput]);
+
+  const onEdgeUpdate = useCallback((oldEdge: Edge, newConnection: any) => {
+    setDbmlInput(prev => {
+      // Find and replace the old Ref line
+      const sourceField = oldEdge.sourceHandle?.split('-')[0];
+      const targetField = oldEdge.targetHandle?.split('-')[0];
+      const oldRefRegex = new RegExp(`Ref:\\s*${oldEdge.source}\\.${sourceField}\\s*(>|<|-)\\s*${oldEdge.target}\\.${targetField}`, 'i');
+      
+      const newSourceField = newConnection.sourceHandle?.split('-')[0];
+      const newTargetField = newConnection.targetHandle?.split('-')[0];
+      const newRef = `Ref: ${newConnection.source}.${newSourceField} > ${newConnection.target}.${newTargetField}`;
+      
+      return prev.replace(oldRefRegex, newRef);
+    });
+    setEdges((els) => updateEdge(oldEdge, newConnection, els));
+  }, [setEdges, setDbmlInput]);
 
   const onTableColorChange = useCallback((tableName: string, color: string) => {
     setDbmlInput(prev => {
       const tableRegex = new RegExp(`(Table\\s+${tableName}\\s*\\[)(.*?)(\\])`, 'i');
       const tableWithoutSettingsRegex = new RegExp(`(Table\\s+${tableName})(\\s*\\{)`, 'i');
-
       if (tableRegex.test(prev)) {
         return prev.replace(tableRegex, (match, p1, p2, p3) => {
           if (p2.includes('headercolor:')) {
@@ -126,119 +122,72 @@ function HomeContent() {
     });
   }, [setDbmlInput]);
 
-  // Initial Data Loading
   useEffect(() => {
     let saved = storage.getSchemas();
-    
-    // Logic: Only add demo if NO schemas exist AND it's the very first time (flag missing)
     if (saved.length === 0 && storage.isFirstRun()) {
       const demoSchema = storage.initDefault();
       saved = [demoSchema];
-      
-      // Auto-trigger Magic for the demo schema
       const { nodes: dNodes, edges: dEdges } = parseDBML(demoSchema.dbml);
       setTimeout(() => handleAutoLayout(dNodes, dEdges), 500);
     }
-    
-    // Cleanup old internal IDs silently
     ['demo-v1', 'demo-v2', 'demo-v3'].forEach(id => {
-      if (saved.some(s => s.id === id)) {
-        storage.deleteSchema(id);
-        saved = saved.filter(s => s.id !== id);
-      }
+      if (saved.some(s => s.id === id)) { storage.deleteSchema(id); saved = saved.filter(s => s.id !== id); }
     });
-
     setSchemas(saved);
-    if (!currentSchema && saved.length > 0) {
-      setCurrentSchema(saved[0]);
-    }
-
+    if (!currentSchema && saved.length > 0) { setCurrentSchema(saved[0]); }
     const checkMobile = () => {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
       if (!mobile && isInitialLoad.current) setIsSidebarOpen(true);
     };
-
     checkMobile();
     window.addEventListener('resize', checkMobile);
     setTimeout(() => { isInitialLoad.current = false; }, 100);
-    
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Handle Switching between Schemas
   useEffect(() => {
     if (!currentSchema) return;
-
-    // 1. Sync Text Data
     setDbmlInput(currentSchema.dbml);
     setSchemaName(currentSchema.name);
-
-    // 2. Sync Visual Canvas
     const { nodes: parsedNodes, edges: parsedEdges, error: parseErr } = parseDBML(currentSchema.dbml);
     setValidationError(parseErr);
-
-    const layoutNodes = parsedNodes.map(n => ({
-      ...n,
-      position: currentSchema.layout?.[n.id] || n.position
-    }));
-
+    const layoutNodes = parsedNodes.map(n => ({ ...n, position: currentSchema.layout?.[n.id] || n.position }));
     setNodes(layoutNodes);
     setEdges(parsedEdges);
-    
-    // Auto fit view on load
     setTimeout(() => fitView({ padding: 0.2 }), 50);
   }, [currentSchema?.id]);
 
-  // Handle live updates when typing in the editor
   useEffect(() => {
     if (isInitialLoad.current || !currentSchema) return;
-
     const { nodes: nextNodes, edges: nextEdges, error: parseErr } = parseDBML(dbmlInput, nodes);
     setValidationError(parseErr);
-    
     if (!parseErr) {
       const currentNodesJson = JSON.stringify(nodes.map(n => ({ id: n.id, data: n.data })));
       const nextNodesJson = JSON.stringify(nextNodes.map(n => ({ id: n.id, data: n.data })));
-      const currentEdgesJson = JSON.stringify(edges.map(e => ({ source: e.source, target: e.target })));
-      const nextEdgesJson = JSON.stringify(nextEdges.map(e => ({ source: e.source, target: e.target })));
-
+      const currentEdgesJson = JSON.stringify(edges.map(e => ({ source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })));
+      const nextEdgesJson = JSON.stringify(nextEdges.map(e => ({ source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })));
       if (currentNodesJson !== nextNodesJson) setNodes(nextNodes);
       if (currentEdgesJson !== nextEdgesJson) setEdges(nextEdges);
     }
   }, [dbmlInput]);
 
-  // Autosave Logic
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!currentSchema) return;
-    
     const layout: Record<string, { x: number; y: number }> = {};
     nodes.forEach(n => { layout[n.id] = n.position; });
-    
-    const hasChanges = dbmlInput !== currentSchema.dbml || 
-                       schemaName !== currentSchema.name ||
-                       JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
-    
+    const hasChanges = dbmlInput !== currentSchema.dbml || schemaName !== currentSchema.name || JSON.stringify(layout) !== JSON.stringify(currentSchema.layout || {});
     if (!hasChanges) return;
-
     if (timerRef.current) clearTimeout(timerRef.current);
     setIsSaving(true);
-
     timerRef.current = setTimeout(() => {
-      const updatedSchema: Schema = { 
-        ...currentSchema, 
-        name: schemaName, 
-        dbml: dbmlInput, 
-        layout, 
-        updatedAt: Date.now() 
-      };
+      const updatedSchema: Schema = { ...currentSchema, name: schemaName, dbml: dbmlInput, layout, updatedAt: Date.now() };
       storage.saveSchema(updatedSchema);
       setSchemas(storage.getSchemas());
       setCurrentSchema(updatedSchema);
       setIsSaving(false);
     }, 1500);
-
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [dbmlInput, schemaName, nodes]);
 
@@ -272,13 +221,7 @@ function HomeContent() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/generate', { 
-        method: 'POST', 
-        body: JSON.stringify({ 
-          prompt: userInput,
-          currentDbml: dbmlInput
-        }) 
-      });
+      const res = await fetch('/api/generate', { method: 'POST', body: JSON.stringify({ prompt: userInput, currentDbml: dbmlInput }) });
       const data = await res.json();
       if (res.ok && data.dbml) {
         const cleanDbml = data.dbml.replace(/```dbml|```/g, '').trim();
@@ -296,9 +239,7 @@ function HomeContent() {
       storage.deleteSchema(id);
       const updated = storage.getSchemas();
       setSchemas(updated);
-      if (currentSchema?.id === id) {
-        setCurrentSchema(updated.length > 0 ? updated[0] : null);
-      }
+      if (currentSchema?.id === id) { setCurrentSchema(updated.length > 0 ? updated[0] : null); }
     }
   };
 
@@ -482,6 +423,7 @@ function HomeContent() {
               onNodesChange={onNodesChange} 
               onEdgesChange={onEdgesChange} 
               onConnect={onConnect} 
+              onEdgeUpdate={onEdgeUpdate}
               onTableColorChange={onTableColorChange}
             />
             {!dbmlInput && (

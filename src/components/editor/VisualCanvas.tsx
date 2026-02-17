@@ -10,14 +10,11 @@ import ReactFlow, {
   BackgroundVariant,
   OnNodesChange,
   OnEdgesChange,
-  OnConnect
+  OnConnect,
+  OnEdgeUpdate
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { TableNode } from './TableNode';
-
-const nodeTypes = {
-  dbTable: TableNode,
-};
 
 interface VisualCanvasProps {
   nodes: Node[];
@@ -25,6 +22,7 @@ interface VisualCanvasProps {
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect?: OnConnect;
+  onEdgeUpdate?: OnEdgeUpdate;
   onTableColorChange?: (tableName: string, color: string) => void;
 }
 
@@ -34,6 +32,7 @@ export const VisualCanvas = ({
   onNodesChange, 
   onEdgesChange, 
   onConnect,
+  onEdgeUpdate,
   onTableColorChange 
 }: VisualCanvasProps) => {
   const nodeTypes = React.useMemo(() => ({
@@ -48,6 +47,7 @@ export const VisualCanvas = ({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onEdgeUpdate={onEdgeUpdate}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
         fitView
