@@ -6,18 +6,19 @@ import { Redis } from '@upstash/redis';
 let lastRequestTime = 0;
 const MIN_INTERVAL_MS = 1000; // 1 request per second
 
-// Create a new ratelimiter, that allows 10 requests per 10 seconds
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(10, "10 s"),
-  analytics: true,
-  /**
-   * Optional prefix for the keys used in redis. This is useful if you want to share a redis
-   * instance with other applications and want to avoid key collisions. The default prefix is
-   * "@upstash/ratelimit"
-   */
-  prefix: "@upstash/ratelimit",
-});
+// Ratelimiter is created lazily inside the handler to ensure env vars are available
+let ratelimit: Ratelimit | null = null;
+function getRatelimit() {
+  if (!ratelimit) {
+    ratelimit = new Ratelimit({
+      redis: Redis.fromEnv(),
+      limiter: Ratelimit.slidingWindow(10, "10 s"),
+      analytics: true,
+      prefix: "@upstash/ratelimit",
+    });
+  }
+  return ratelimit;
+}
 
 export async function POST(req: Request) {
   try {
@@ -25,21 +26,21 @@ export async function POST(req: Request) {
     const timeSinceLastRequest = now - lastRequestTime;
 
     if (timeSinceLastRequest < MIN_INTERVAL_MS) {
-       return NextResponse.json({ 
-         error: 'Too many requests. Please wait a second between generations.' 
-       }, { status: 429 });
+      return NextResponse.json({
+        error: 'Too many requests. Please wait a second between generations.'
+      }, { status: 429 });
     }
 
     lastRequestTime = now;
-    
+
     // Get IP address for rate limiting
     const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
-    
-    const { success } = await ratelimit.limit(ip);
-    
+
+    const { success } = await getRatelimit().limit(ip);
+
     if (!success) {
-      return NextResponse.json({ 
-        error: 'Rate limit exceeded. Please try again later.' 
+      return NextResponse.json({
+        error: 'Rate limit exceeded. Please try again later.'
       }, { status: 429 });
     }
 
