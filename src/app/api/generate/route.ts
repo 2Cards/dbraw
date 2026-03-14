@@ -46,13 +46,16 @@ export async function POST(req: Request) {
     const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
 
     const rl = getRatelimit();
-    if (rl) {
-      const { success } = await rl.limit(ip);
-      if (!success) {
-        return NextResponse.json({
-          error: 'Rate limit exceeded. Please try again later.'
-        }, { status: 429 });
-      }
+    if (!rl) {
+      return NextResponse.json({
+        error: 'Rate limiter not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.'
+      }, { status: 503 });
+    }
+    const { success } = await rl.limit(ip);
+    if (!success) {
+      return NextResponse.json({
+        error: 'Rate limit exceeded. Please try again later.'
+      }, { status: 429 });
     }
 
     const bodyResult = GenerateRequestSchema.safeParse(await req.json());
